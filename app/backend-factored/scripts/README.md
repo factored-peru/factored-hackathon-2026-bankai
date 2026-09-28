@@ -1,0 +1,27 @@
+# scripts
+
+Automatizacion local para mantener el contrato como fuente de verdad.
+
+- `bun run spec:check`: valida reglas SDD sobre `specs/openapi.json`.
+- `validate-openapi.ts`: implementacion del validador de contrato.
+
+## Matriz de comportamiento
+
+`bun run agent:matrix -- --all` ejecuta fixtures sintéticos de la cadena del
+control plane y muestra cada escenario verticalmente. La salida explica el
+prompt de entrada, la sesión server-side, la desidentificación, los verdicts
+de guardrail, Jev, router, policy, recuperación, resolución de handles,
+disclosure, generación, reemplazo y respuesta.
+
+```bash
+bun run agent:matrix -- --all
+bun run agent:matrix -- --scenario authorized-database
+bun run agent:matrix -- --scenario direct-prompt-injection --plain
+bun run agent:matrix -- --json
+```
+
+La matriz no llama proveedores externos ni usa API keys. Los escenarios
+marcan explícitamente cuando un workflow, checkpointer, Jev o Model Armor es
+un fixture local. La salida humana puede mostrar contenido sintético para
+explicar la transformación; `--json` omite prompts, valores privados y
+handles completos. `--plain` y `NO_COLOR=1` desactivan colores ANSI.
