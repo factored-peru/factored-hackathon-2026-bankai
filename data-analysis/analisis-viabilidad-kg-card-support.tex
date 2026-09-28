@@ -1,0 +1,299 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\definecolor{navy}{HTML}{17365D}
+\definecolor{lightblue}{HTML}{EAF2F8}
+\definecolor{codegray}{HTML}{F5F5F5}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=navy,
+  urlcolor=navy,
+  pdftitle={Análisis de viabilidad: Knowledge Graph para Card Support},
+  pdfauthor={Factored Hackathon 2026}
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codegray},
+  frame=single,
+  rulecolor=\color{lightblue},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  breaklines=true,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1 {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1 {Ñ}{{\~N}}1
+}
+
+\renewcommand{\arraystretch}{1.18}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\title{\textcolor{navy}{Análisis de viabilidad\\[2pt] Knowledge Graph para Card Support}}
+\author{Factored Hackathon 2026}
+\date{27 de septiembre de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este informe evalúa la viabilidad de fortalecer una solución de \emph{Card Support Service} con un modelo probabilístico y un Knowledge Graph. La conclusión principal es que los datos no soportan todavía una inferencia amplia para todo el soporte de tarjetas, pero sí justifican una primera solución especializada en \textbf{Transaction Issue / Transaction Dispute Triage}, combinando herramientas determinísticas con inferencia interpretable.
+\end{abstract}
+
+\section{Conclusión ejecutiva}
+
+No conviene intentar todavía una inferencia probabilística amplia para todo \emph{Card Support Service}. Los datos sí alcanzan para una capa probabilística, pero el problema debe acotarse.
+
+El mejor candidato es \textbf{Transaction Issue / Transaction Dispute Triage}, especialmente para:
+
+\begin{itemize}
+  \item transacciones rechazadas;
+  \item operaciones fraudulentas o potencialmente fraudulentas;
+  \item operaciones pendientes;
+  \item operaciones reversadas; y
+  \item casos que requieren escalamiento.
+\end{itemize}
+
+La razón es que existe bastante información operacional de tarjetas, pero poca evidencia etiquetada de soporte. Las transacciones tienen campos estructurados como \texttt{transaction\_status}, \texttt{response\_code}, \texttt{is\_fraud}, \texttt{fraud\_score}, canal, monto y ubicación. En cambio, hay poca información que represente explícitamente qué problema tenía el cliente y cómo se resolvió.
+
+\section{Cobertura de los datos}
+
+El conjunto contiene:
+
+\begin{itemize}
+  \item 100\,102 tarjetas de crédito y 39\,938 tarjetas de débito;
+  \item más de un millón de transacciones asociadas a tarjetas de crédito;
+  \item 15\,486 reclamos asociados a productos de tarjeta;
+  \item 1\,223 interacciones que mencionan explícitamente IDs de tarjeta; y
+  \item solo 322 transcripts asociados a esas interacciones explícitas.
+\end{itemize}
+
+Las tarjetas cuentan con contexto operacional útil: estado, saldo, límite de crédito, días de mora, fecha de última transacción, canal de apertura y vinculación con la aplicación móvil.
+
+\subsection{Distribución transaccional de tarjetas de crédito}
+
+La distribución observada en las transacciones de crédito es:
+
+\begin{table}[ht]
+\centering
+\caption{Estados de transacciones de tarjetas de crédito}
+\begin{tabular}{lrr}
+\toprule
+Estado & Registros & Proporción aproximada \\
+\midrule
+Aprobada & 1\,019\,373 & 92.0\% \\
+Rechazada & 55\,650 & 5.0\% \\
+Pendiente & 21\,952 & 2.0\% \\
+Reversada & 11\,310 & 1.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Esta distribución proporciona targets transaccionales observables. Es considerablemente más sólida que intentar inferir directamente una intención general de soporte a partir de los transcripts disponibles.
+
+\section{Viabilidad por capacidad}
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Evaluación de capacidades para Card Support}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.31\textwidth} X}
+\toprule
+Capacidad & Evaluación \\
+\midrule
+Consultar estado de tarjeta & \textbf{Alta}. Hay producto, estado, saldo, límite y mora. \\
+Explicar transacciones rechazadas & \textbf{Alta}. Hay estado, canal, código de respuesta, monto y contexto de producto. \\
+Detectar señales de fraude & \textbf{Media-alta}. Hay \texttt{is\_fraud}, \texttt{fraud\_score}, ubicación, canal y monto. \\
+Identificar intención del cliente & \textbf{Baja}. Los transcripts explícitos de tarjeta son pocos y predominan en \texttt{consulta\_general}. \\
+Automatizar resolución de casos & \textbf{Baja}. Faltan acciones, códigos de resolución y políticas operativas. \\
+Medir satisfacción y calidad & \textbf{Baja}. La satisfacción está muy incompleta en los reclamos. \\
+Crear un copiloto para agentes & \textbf{Alta}. Se pueden combinar herramientas de consulta con recomendaciones explicables. \\
+Crear un agente autónomo & \textbf{Insuficiente por ahora}. Se requiere autenticación, políticas y outcomes confiables. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Por qué no conviene empezar por Card Support general}
+
+Para un modelo de soporte general se necesitarían targets como:
+
+\begin{lstlisting}
+transaction_status
+response_code
+fraud_score
+card_status
+days_past_due
+customer_context
+        |
+        +--> support_intent
+        |
+        +--> resolution_action
+\end{lstlisting}
+
+Sin embargo, \texttt{support\_intent} y \texttt{resolution\_action} no están suficientemente construidos en los datos actuales. Las 1\,223 interacciones con mención explícita de tarjeta tienen 322 transcripts, y esos transcripts presentan prácticamente una sola intención dominante: \texttt{consulta\_general}.
+
+Por ello, todavía no hay una base suficiente para entrenar de manera confiable intenciones como:
+
+\begin{itemize}
+  \item pérdida o robo;
+  \item bloqueo y desbloqueo;
+  \item activación;
+  \item cambio de PIN;
+  \item compra desconocida;
+  \item retiro no reconocido;
+  \item tarjeta vencida;
+  \item aumento de límite; y
+  \item reemplazo de tarjeta.
+\end{itemize}
+
+\section{Transaction Issue / Dispute Triage}
+
+En el dominio transaccional la situación es más defendible estadísticamente. Las transacciones tienen volumen, variables estructuradas y estados observables. La solución podría comenzar con clases que se puedan verificar directamente:
+
+\begin{lstlisting}
+TRANSACTION_OK
+DECLINED
+PENDING
+REVERSED
+POTENTIAL_FRAUD
+\end{lstlisting}
+
+En una segunda etapa, estas clases podrían evolucionar hacia categorías de soporte:
+
+\begin{lstlisting}
+DECLINED_INSUFFICIENT_FUNDS
+DECLINED_CARD_STATUS
+SUSPECTED_FRAUD
+UNRECOGNIZED_TRANSACTION
+PENDING_TRANSACTION
+REVERSED_TRANSACTION
+DISPUTE_REQUIRES_ESCALATION
+\end{lstlisting}
+
+Las categorías más específicas solo deberían introducirse después de comprobar que pueden obtenerse o construirse de manera reproducible a partir de BigQuery.
+
+\subsection{Modelo probabilístico interpretable}
+
+Una formulación inicial podría estimar:
+
+\[
+P(\text{Fraud}\mid \text{channel},\text{amount bucket},\text{fraud score bucket},\text{response code},\text{location},\ldots)
+\]
+
+o:
+
+\[
+P(\text{Dispute Category}\mid F_1,\ldots,F_n).
+\]
+
+El Knowledge Graph podría mantener evidencia y relaciones de soporte:
+
+\begin{lstlisting}
+response_code:X  ----+
+fraud_score:high ----+--> SUSPECTED_FRAUD
+channel:online   ----+
+amount:high      ----+
+\end{lstlisting}
+
+Cada inferencia debería conservar:
+
+\begin{itemize}
+  \item probabilidad posterior;
+  \item evidencia utilizada;
+  \item soporte;
+  \item confianza; y
+  \item lift o fuerza relativa de la asociación.
+\end{itemize}
+
+Esto mantiene la misma filosofía de un modelo Naive Bayes/Knowledge Graph, pero con millones de observaciones estructuradas en vez de un conjunto pequeño de perfiles.
+
+\section{Arquitectura recomendada}
+
+La propuesta debería separar claramente consultas determinísticas de inferencia probabilística:
+
+\begin{lstlisting}
+CARD SUPPORT SERVICE
+        |
+        +-- Deterministic tools
+        |      estado de tarjeta
+        |      saldo y límite
+        |      mora
+        |      últimas transacciones
+        |
+        +-- ML inference
+               |
+        TRANSACTION ISSUE TRIAGE
+               |
+        rechazo / fraude / pending /
+        reversal / dispute candidate
+               |
+        recommended next action
+\end{lstlisting}
+
+Las herramientas determinísticas deben ser la fuente de verdad para el estado actual de la cuenta. El modelo probabilístico debe priorizar hipótesis, detectar señales y recomendar el siguiente paso, pero no sustituir las reglas operativas del banco.
+
+\section{Reclamos y límites para entrenamiento supervisado}
+
+Existen 15\,486 reclamos asociados a tarjetas. No obstante:
+
+\begin{itemize}
+  \item solo 3\,534 tienen texto de resolución;
+  \item solo 561 tienen satisfacción registrada;
+  \item ninguno tiene \texttt{origin\_interaction\_id}; y
+  \item aproximadamente 75\% continúan abiertos, en proceso o escalados.
+\end{itemize}
+
+Esto permite analizar categorías, prioridad, SLA y recurrencia, pero limita el entrenamiento de un modelo que aprenda una política completa de resolución.
+
+\section{Recomendaciones para el proyecto}
+
+\begin{enumerate}
+  \item Presentar el producto como \textbf{Card Support Service} con herramientas determinísticas y una capa probabilística especializada en \textbf{Transaction Issue / Dispute Triage}.
+  \item No presentar inicialmente el sistema como un agente que resuelve automáticamente todo tipo de reclamo.
+  \item Crear una tabla normalizada \texttt{card\_support\_cases} con los campos:
+\end{enumerate}
+
+\begin{lstlisting}
+customer_id
+product_id
+transaction_id
+intent
+issue_type
+action_taken
+resolution_code
+escalated
+verified_identity
+outcome
+\end{lstlisting}
+
+\begin{enumerate}
+  \setcounter{enumi}{3}
+  \item Relacionar explícitamente conversación, tarjeta, transacción, reclamo y resultado.
+  \item Incorporar una taxonomía de intenciones específica para tarjetas.
+  \item Añadir una base de conocimiento con políticas de bloqueo, reemplazo, fraude, disputas, límites y tiempos de atención.
+  \item Normalizar valores y tipos del contrato de datos antes del entrenamiento. Por ejemplo, el diccionario usa valores como \texttt{Credit Card}, mientras BigQuery utiliza \texttt{Tarjeta Crédito}; además, algunos tipos documentados como \texttt{INTEGER} o \texttt{VARCHAR} aparecen como \texttt{FLOAT64} o \texttt{INT64}.
+\end{enumerate}
+
+\section{Conclusión}
+
+Para Card Support genérico no hay todavía suficiente información etiquetada para hacer una inferencia estadística tan sólida como la de un modelo de perfiles o arquetipos.
+
+Para la parte transaccional sí existe una base adecuada: hay volumen, estados, señales de fraude, canales, montos, ubicaciones y contexto de tarjeta. Por eso, la dirección más defendible es:
+
+\begin{quote}
+\textbf{Card Support Service como producto: herramientas determinísticas + ML probabilístico interpretable especializado en Transaction Issue / Dispute Triage.}
+\end{quote}
+
+\end{document}

@@ -1,0 +1,323 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\definecolor{navy}{HTML}{17365D}
+\definecolor{lightblue}{HTML}{EAF2F8}
+\definecolor{codegray}{HTML}{F5F5F5}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=navy,
+  urlcolor=navy,
+  pdftitle={Viabilidad de RAG para Card Support},
+  pdfauthor={Factored Hackathon 2026}
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codegray},
+  frame=single,
+  rulecolor=\color{lightblue},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  breaklines=true,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1 {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1 {Ñ}{{\~N}}1
+}
+
+\renewcommand{\arraystretch}{1.18}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\title{\textcolor{navy}{Viabilidad de RAG para\\[2pt] Card Support Service}}
+\author{Factored Hackathon 2026}
+\date{27 de septiembre de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este reporte evalúa si los datos disponibles en BigQuery pueden sustentar una solución de pregunta--respuesta para Card Support antes de recurrir a inferencia estadística general. La conclusión es que existe una oportunidad clara para un sistema híbrido: BigQuery como fuente estructurada y autorizada para datos actuales de tarjetas, transacciones y disputas; RAG sobre documentación oficial; y recuperación de casos históricos como evidencia secundaria. Los transcripts y reclamos actuales no son suficientes para funcionar como una base de conocimiento textual autónoma.
+\end{abstract}
+
+\section{Conclusión ejecutiva}
+
+Los datos sí pueden fortalecer una solución de pregunta--respuesta, pero no conviene convertir todas las tablas de BigQuery en documentos vectoriales. El uso adecuado depende del tipo de pregunta:
+
+\begin{itemize}
+  \item preguntas sobre el estado actual de una tarjeta, una transacción o un reclamo: consulta estructurada a BigQuery;
+  \item preguntas sobre políticas, requisitos y procedimientos: RAG sobre documentación oficial;
+  \item preguntas sobre casos similares: recuperación de reclamos y transcripts históricos, con cautela;
+  \item priorización de fraude, escalamiento o riesgo: inferencia estadística posterior.
+\end{itemize}
+
+El veredicto es, por tanto, \textbf{RAG híbrido más herramientas de consulta}, no RAG puro sobre las tablas ni inferencia estadística como primer mecanismo de respuesta.
+
+\section{Criterio de evaluación}
+
+Una fuente es apropiada para RAG cuando contiene texto suficientemente diverso, informativo, estable y autorizado para responder preguntas. Una fuente estructurada es más apropiada como herramienta cuando representa el estado actual de una entidad y la respuesta depende de filtros exactos, permisos o cálculos.
+
+Se evaluaron tres conjuntos principales:
+
+\begin{enumerate}
+  \item \texttt{transactions}: operaciones financieras y señales transaccionales;
+  \item \texttt{call\_transcripts}: conversaciones y anotaciones de soporte;
+  \item \texttt{complaints}: reclamos, disputas, resoluciones y estados.
+\end{enumerate}
+
+La evaluación se hizo mediante conteos, cardinalidad textual, disponibilidad de vínculos y cobertura de campos, sin extraer ni exponer datos personales.
+
+\section{Transacciones y operaciones}
+
+La tabla \texttt{transactions} contiene 4.43 millones de registros. Para tarjetas de crédito hay 1\,108\,285 transacciones, con la siguiente distribución:
+
+\begin{table}[ht]
+\centering
+\caption{Estados observados en transacciones de tarjetas de crédito}
+\begin{tabular}{lrr}
+\toprule
+Estado & Registros & Proporción aproximada \\
+\midrule
+Aprobada & 1\,019\,373 & 92.0\% \\
+Rechazada & 55\,650 & 5.0\% \\
+Pendiente & 21\,952 & 2.0\% \\
+Reversada & 11\,310 & 1.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+También existen campos con valor para respuestas operativas:
+
+\begin{itemize}
+  \item \texttt{transaction\_status}: cuatro valores y sin nulos;
+  \item \texttt{response\_code}: cinco valores distintos, aunque con aproximadamente 221 mil nulos en el total;
+  \item \texttt{fraud\_score}: más de 5 mil valores distintos;
+  \item \texttt{is\_fraud}, canal, monto, moneda y ubicación;
+  \item relación con \texttt{customer\_id} y \texttt{product\_id}.
+\end{itemize}
+
+Estas columnas permiten responder preguntas como:
+
+\begin{lstlisting}
+Cual fue el estado de mi operacion?
+Que operaciones fueron rechazadas?
+Cual fue la ultima compra de mi tarjeta?
+La operacion fue marcada como fraude?
+Que codigo de respuesta tuvo la transaccion?
+\end{lstlisting}
+
+Para este tipo de consultas, un vector store puede introducir ambigüedad. La respuesta debe producirse con una consulta parametrizada y autorizada:
+
+\[
+\text{Pregunta} \rightarrow \text{identificación autorizada} \rightarrow \text{SQL} \rightarrow \text{respuesta con evidencia}
+\]
+
+Las transacciones pueden alimentar posteriormente modelos de fraude o priorización, pero no es necesario aplicar inferencia estadística para responder su estado factual.
+
+\section{Transcripts de soporte}
+
+La tabla \texttt{call\_transcripts} tiene 171\,321 transcripts. Aunque el volumen parece suficiente, la diversidad efectiva es baja:
+
+\begin{table}[ht]
+\centering
+\caption{Calidad del corpus de transcripts}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.55\textwidth} r}
+\toprule
+Métrica & Valor \\
+\midrule
+Transcripts totales & 171\,321 \\
+Textos completos distintos & 546 \\
+Longitud promedio & 278 caracteres \\
+Mediana de longitud & 231 caracteres \\
+Percentil 90 de longitud & 400 caracteres \\
+Intenciones distintas & 1 \\
+Temas distintos & 6 \\
+Idiomas detectados & 1 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Para interacciones explícitamente relacionadas con tarjetas solo aparecen 322 transcripts, con 105 textos distintos y una única intención dominante: \texttt{consulta\_general}. Esto sugiere que el corpus es repetitivo o sintético y no representa suficientemente la variedad de problemas reales de soporte.
+
+Los transcripts sí pueden servir para:
+
+\begin{itemize}
+  \item estudiar cómo formulan preguntas los clientes;
+  \item construir ejemplos de prompts;
+  \item crear un clasificador preliminar;
+  \item recuperar conversaciones parecidas como contexto auxiliar.
+\end{itemize}
+
+No deberían usarse como fuente autorizada para afirmar políticas, plazos o acciones permitidas. Una conversación histórica no necesariamente representa la regla vigente del banco.
+
+\section{Reclamos y disputas de tarjetas}
+
+Hay 15\,486 reclamos vinculados a productos de tarjeta. El problema principal no es el número de filas, sino la escasa diversidad y trazabilidad textual:
+
+\begin{table}[ht]
+\centering
+\caption{Cobertura de casos de disputa de tarjetas}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.67\textwidth} r}
+\toprule
+Indicador & Casos \\
+\midrule
+Casos asociados a tarjetas & 15\,486 \\
+Descripciones distintas & 5 \\
+Resoluciones distintas & 5 \\
+Casos con texto de resolución & 3\,534 \\
+Casos con satisfacción registrada & 561 \\
+Casos con monto reclamado & 5\,036 \\
+Casos con compensación & 1\,053 \\
+Casos con fecha de cierre & 565 \\
+Casos con \texttt{origin\_interaction\_id} & 0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Además, la tabla de reclamos no contiene un \texttt{transaction\_id}. Por tanto, no es posible enlazar directamente una disputa con la operación concreta que el cliente cuestiona. El vínculo existente es principalmente con el producto de tarjeta y con campos de categoría, monto, estado, prioridad y fechas.
+
+Esto permite responder mediante SQL:
+
+\begin{itemize}
+  \item estado actual del reclamo;
+  \item prioridad y categoría;
+  \item canal de recepción;
+  \item monto reclamado y compensación;
+  \item fecha de resolución o cierre, cuando existe;
+  \item incumplimiento de SLA.
+\end{itemize}
+
+Pero limita las respuestas narrativas como:
+
+\begin{itemize}
+  \item “¿Por qué se rechazó mi disputa?”;
+  \item “¿Qué ocurrió exactamente con mi compra?”;
+  \item “¿Qué documentos debo presentar?”;
+  \item “¿Cuál es la política para una operación no reconocida?”.
+\end{itemize}
+
+Las cinco descripciones y cinco resoluciones distintas sugieren que los textos son plantillas o datos sintéticos muy repetitivos. Pueden utilizarse para prototipos, pero no ofrecen un corpus robusto para recuperación semántica.
+
+\section{Evaluación por tipo de pregunta}
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Mecanismo recomendado por tipo de pregunta}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.29\textwidth} >{\raggedright\arraybackslash}p{0.25\textwidth} X}
+\toprule
+Tipo de pregunta & Mecanismo & Viabilidad \\
+\midrule
+Estado de tarjeta, saldo, límite o mora & SQL/herramienta & Alta; depende de autorización y filtros exactos. \\
+Estado de una operación & SQL/herramienta & Alta; existe estado y contexto transaccional. \\
+Motivo de rechazo & SQL + reglas & Media-alta; depende de la cobertura de \texttt{response\_code}. \\
+Señal de fraude & SQL + modelo posterior & Media-alta; existe evidencia estructurada, pero no siempre explicación. \\
+Estado de un reclamo & SQL/herramienta & Media-alta; hay estado, prioridad y fechas. \\
+Política de disputa & RAG documental & Baja con BigQuery actual; falta documentación oficial. \\
+Caso histórico similar & RAG de casos & Baja-media; el corpus es pequeño y repetitivo. \\
+Acción permitida por el agente & RAG + reglas & Baja con los datos actuales; faltan políticas y permisos. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Arquitectura recomendada}
+
+La solución debería separar las responsabilidades:
+
+\begin{lstlisting}
+Pregunta del cliente
+        |
+        +-- Pide estado o dato actual?
+        |       |
+        |       +-- Consulta autorizada a BigQuery
+        |
+        +-- Pide politica o procedimiento?
+        |       |
+        |       +-- RAG sobre documentacion oficial
+        |
+        +-- Pide comparacion con casos anteriores?
+                |
+                +-- Recuperacion de casos historicos
+\end{lstlisting}
+
+Las herramientas estructuradas podrían exponer interfaces como:
+
+\begin{lstlisting}
+get_customer_cards(customer_id)
+get_card_status(product_id)
+get_recent_transactions(customer_id, product_id, date_range)
+get_transaction_details(transaction_id)
+get_card_disputes(customer_id, product_id)
+get_dispute_status(complaint_id)
+\end{lstlisting}
+
+El RAG documental debería contener políticas versionadas sobre bloqueo, reemplazo, fraude, disputas, límites, requisitos, SLA y diferencias por país. Ese contenido no está suficientemente presente en BigQuery.
+
+\section{Dónde encaja la inferencia estadística}
+
+La inferencia no debe ser el primer mecanismo para responder hechos actuales. Puede incorporarse como una capa de apoyo para:
+
+\begin{itemize}
+  \item priorizar casos de fraude;
+  \item identificar disputas con necesidad probable de escalamiento;
+  \item detectar patrones anómalos;
+  \item recomendar una categoría de problema;
+  \item ordenar casos para atención humana.
+\end{itemize}
+
+Una formulación posterior podría estimar:
+
+\[
+P(\text{Fraud}\mid\text{channel},\text{amount},\text{fraud score},\text{response code},\text{location},\ldots)
+\]
+
+Pero el modelo debería devolver evidencia y confianza, no reemplazar la fuente transaccional ni la política oficial.
+
+\section{Riesgos y controles}
+
+\begin{itemize}
+  \item \textbf{Información sensible:} no indexar directamente números de producto, documentos, teléfonos o correos; aplicar autorización por cliente.
+  \item \textbf{Datos actuales frente a históricos:} separar claramente la consulta del estado actual de la recuperación de casos antiguos.
+  \item \textbf{Corpus repetitivo:} deduplicar transcripts y reclamos antes de cualquier indexación.
+  \item \textbf{Falta de vínculo transaccional:} agregar \texttt{transaction\_id} a disputas y enlazar las interacciones originales.
+  \item \textbf{Políticas ausentes:} no inferir requisitos o decisiones operativas a partir de ejemplos históricos.
+  \item \textbf{Trazabilidad:} cada respuesta debe indicar si proviene de una fila actual, una política documental o un caso histórico.
+\end{itemize}
+
+\section{Recomendaciones de implementación}
+
+\begin{enumerate}
+  \item Construir primero un asistente de consulta para tarjetas, transacciones y disputas.
+  \item Crear una base RAG separada con documentación oficial y versionada.
+  \item Usar transcripts y reclamos únicamente como ejemplos históricos filtrables.
+  \item Normalizar y deduplicar los textos antes de generar embeddings.
+  \item Crear una relación explícita entre conversación, tarjeta, transacción, reclamo y resultado.
+  \item Añadir una taxonomía de intenciones y códigos de resolución específicos de tarjetas.
+  \item Introducir inferencia estadística solo para priorización, riesgo y escalamiento.
+\end{enumerate}
+
+\section{Conclusión}
+
+BigQuery sí puede fortalecer una solución de pregunta--respuesta para Card Support, pero no como un RAG puro sobre todas las tablas.
+
+La arquitectura más defendible es:
+
+\begin{quote}
+\textbf{BigQuery como fuente estructurada y autorizada para datos actuales de tarjetas, operaciones y disputas; RAG sobre políticas oficiales; y transcripts/reclamos como evidencia histórica secundaria.}
+\end{quote}
+
+Este enfoque permite comenzar con respuestas verificables sin depender de inferencia estadística general. La inferencia puede añadirse posteriormente para detectar riesgo, priorizar casos y recomendar escalamiento.
+
+\end{document}
