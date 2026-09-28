@@ -1,1 +1,42 @@
+# Operating-system and editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Generated reports and LaTeX build files
 *.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Node/Bun dependencies and build artifacts
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/.nyc_output/
+**/.turbo/
+**/.cache/
+**/.eslintcache
+**/bunfig.local.toml
+**/*.tsbuildinfo
+
+# Backend-specific generated JavaScript and test output
+app/backend/scripts/*.js
+app/backend/src/**/*.js
+app/backend/tests/**/*.js
+app/backend/casos.txt

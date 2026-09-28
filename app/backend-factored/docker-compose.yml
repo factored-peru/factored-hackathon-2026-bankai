@@ -1,0 +1,41 @@
+services:
+  valkey:
+    image: valkey/valkey:8.1.10-alpine
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  base-bun-typescript-service:
+    build:
+      context: .
+    environment:
+      APP_ENV: prod
+      HOST: 0.0.0.0
+      PORT: 3000
+      CONFIG_FILE: config/settings.toml
+      SERVICE_TOKEN: ${SERVICE_TOKEN:?SERVICE_TOKEN must be set for APP_ENV=prod}
+      SESSION_STORE_ENABLED: ${SESSION_STORE_ENABLED:-false}
+      KV_PROVIDER: valkey
+      KV_URL: redis://valkey:6379
+      KV_TLS: "false"
+      PRIVATE_DATA_ENCRYPTION_KEY: ${PRIVATE_DATA_ENCRYPTION_KEY:-}
+    depends_on:
+      valkey:
+        condition: service_healthy
+    ports:
+      - "8010:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "await fetch('http://127.0.0.1:3000/v1/health/live').then((r) => { if (!r.ok) process.exit(1) })",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
