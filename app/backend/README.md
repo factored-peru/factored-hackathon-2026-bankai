@@ -5,11 +5,16 @@ API y control plane online del asistente bancario.
 ## Stack
 
 - Bun `>=1.4`, TypeScript estricto, Fastify 5 y Zod 4.
-- LangGraph.js para workflow online determinista.
+- LangGraph.js `StateGraph` para workflow online determinista; ReAct queda como
+  decisión pendiente, no como loop activo.
 - Firebase Admin para identidad; Firestore para estado durable.
 - Memorystore for Valkey mediante `node-redis` para SessionManager y
   coordinación efímera.
 - BigQuery para Structured RAG y GCS para artefactos versionados de KG-RAG.
+
+La recuperación vectorial está desconectada: no existe corpus ni vector store
+autorizado. Structured RAG y KG-RAG usan catálogos cerrados y fallan cerrados
+hasta que sus adaptadores se implementen.
 
 Python no forma parte de este proceso: el procesamiento y el grafo se producen
 en `../../data-ingestion-and-processing/`.

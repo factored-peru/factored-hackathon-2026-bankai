@@ -4,6 +4,8 @@
 
 Accepted
 
+Partially superseded by ADR 0020 for catalog loading and specialized JEV gates.
+
 ## Context
 
 Los datos estructurados, políticas y señales de conocimiento requieren una

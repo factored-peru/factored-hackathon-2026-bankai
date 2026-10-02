@@ -4,6 +4,8 @@
 
 Accepted
 
+Partially superseded by ADR 0020 for StateGraph and evaluation boundaries.
+
 ## Context
 
 Los fallos de sesión, guardrail, clasificación, recuperación o herramienta no

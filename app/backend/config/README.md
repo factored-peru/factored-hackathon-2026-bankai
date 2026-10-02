@@ -14,8 +14,10 @@ variables de entorno. Los perfiles soportados son `dev`, `staging` y `prod`.
   Structured RAG, KG-RAG y recursos Google Cloud mediante ADC/IAM.
 - `MODEL_ARMOR_*`, `SDP_*`, `VERTEX_AI_*` y `JEV_*`: proveedores del control
   plane, siempre detrás de un adaptador y una política de datos.
-- `OTEL_*`: telemetría sin contenido privado.
+- `OTEL_*`: telemetría sin contenido privado y métricas de evaluadores TypeScript.
 
-Los flags de integración permanecen desactivados hasta que su adaptador,
+LangSmith, DeepEval, Promptfoo y DeepAgents no son dependencias ni destinos de
+telemetría P0: `../../docs/planning/evals.md` establece OTel + BigQuery y
+evaluadores TypeScript/JEV como la ruta vigente. Los flags de integración permanecen desactivados hasta que su adaptador,
 contrato, pruebas y políticas de región/retención estén implementados. Firestore
 es durable; Valkey solo mantiene estado con TTL.

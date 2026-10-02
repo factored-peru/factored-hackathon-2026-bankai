@@ -4,6 +4,8 @@
 
 Accepted
 
+Partially superseded by ADR 0020 for StateGraph routing and RAG catalogs.
+
 ## Context
 
 El asistente combina conversación, datos bancarios estructurados, evidencia de

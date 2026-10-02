@@ -15,6 +15,9 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@langchain/core": "^1.1.48",
+		"@langchain/langgraph": "^1.4.18",
+		"@opentelemetry/api": "^1.9.1",
 		"@scalar/fastify-api-reference": "^1.67.0",
 		"fastify": "^5.12.1",
 		"redis": "^5.8.2",

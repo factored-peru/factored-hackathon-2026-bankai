@@ -114,17 +114,17 @@ describe("foundation boundaries", () => {
 	});
 
 	test("accepts only closed allowlisted query plans", () => {
-		const service = new QueryPlanService();
+		const service = new QueryPlanService(["card_dispute_summary"]);
 		expect(
 			service.validate({
-				operation: "select",
-				resource: "employee_movements",
-				fields: ["movement_id", "status"],
-				filters: [{ field: "employee_id", operator: "eq", value: "e-1" }],
-				orderBy: null,
-				limit: 20,
+				queryId: "card_dispute_summary",
+				parameters: { dispute_id: "synthetic-dispute" },
 			}),
 		).toMatchObject({ status: "valid" });
+		expect(service.validate({ queryId: "unknown", parameters: {} })).toEqual({
+			status: "invalid",
+			reasonCode: "query_plan_not_catalogued",
+		});
 		expect(service.validate({ sql: "DELETE FROM movements" })).toEqual({
 			status: "invalid",
 			reasonCode: "invalid_query_plan",

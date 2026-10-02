@@ -4,6 +4,8 @@
 
 Accepted
 
+Partially superseded by ADR 0020 for evaluation destinations and metrics.
+
 ## Context
 
 OpenTelemetry define atributos GenAI que pueden contener prompts, mensajes,

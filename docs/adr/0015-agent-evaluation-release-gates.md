@@ -4,6 +4,8 @@
 
 Accepted
 
+Partially superseded by ADR 0020 and `docs/planning/evals.md`.
+
 ## Context
 
 Las pruebas unitarias no bastan para validar rutas agentic, recuperación,

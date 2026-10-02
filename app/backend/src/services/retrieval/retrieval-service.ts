@@ -7,6 +7,11 @@ import type { SessionContext } from "../../domain/session.js";
 import type { GuardrailProvider } from "../ports/control.js";
 import type { KnowledgeRetriever } from "../ports/retrieval.js";
 
+/**
+ * @deprecated TODO(vector-rag): kept only as a boundary regression fixture.
+ * Do not register it in the StateGraph until an approved, versioned corpus and
+ * a vector-store decision exist.
+ */
 export class RetrievalService {
 	constructor(
 		private readonly retriever: KnowledgeRetriever,
