@@ -1,0 +1,27 @@
+[project]
+name = "bankai-data-pipeline"
+version = "0.1.0"
+description = "Offline ingestion, KDD and knowledge-graph pipeline for Bankai"
+requires-python = ">=3.12"
+dependencies = [
+  "google-cloud-bigquery",
+  "google-cloud-storage",
+  "msgpack",
+  "networkx",
+  "pandas",
+  "pyarrow",
+  "scikit-learn",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+bankai-pipeline = "bankai_pipeline.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

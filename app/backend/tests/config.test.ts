@@ -1,0 +1,173 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+	envSchema,
+	flattenTomlSettings,
+	loadTomlSettings,
+	validateRuntimeConfiguration,
+} from "../src/config/env.js";
+
+describe("config file loading", () => {
+	test("toml settings are flattened to env keys", () => {
+		const values = flattenTomlSettings({
+			app: {
+				name: "custom-service",
+				env: "staging",
+				port: 9000,
+				database_enabled: true,
+				bucket_enabled: true,
+				cache_enabled: true,
+			},
+		});
+
+		const settings = envSchema.parse(values);
+
+		expect(settings.APP_NAME).toBe("custom-service");
+		expect(settings.APP_ENV).toBe("staging");
+		expect(settings.PORT).toBe(9000);
+		expect(settings.DATABASE_ENABLED).toBe(true);
+		expect(settings.BUCKET_ENABLED).toBe(true);
+		expect(settings.CACHE_ENABLED).toBe(true);
+		expect(settings.SERVICE_TOKEN).toBe("");
+		expect(settings.SESSION_COOKIE_NAME).toBe("__Host-session");
+		expect(settings.KV_PROVIDER).toBe("valkey");
+		expect(settings.KV_TLS).toBe(true);
+		expect(settings.SESSION_TTL_SECONDS).toBe(1800);
+		expect(settings.FIRESTORE_ENABLED).toBe(false);
+		expect(settings.MODEL_ARMOR_ENABLED).toBe(false);
+		expect(settings.JEV_API_KEY).toBe("");
+		expect(settings.OPENAI_API_KEY).toBe("");
+		expect(settings.AGENT_MAX_STEPS).toBe(12);
+	});
+
+	test("toml settings load from custom path", () => {
+		const dir = mkdtempSync(join(tmpdir(), "bun-config-"));
+		const configFile = join(dir, "settings.toml");
+		writeFileSync(
+			configFile,
+			`
+[app]
+name = "custom-service"
+env = "dev"
+host = "0.0.0.0"
+port = 9001
+`,
+		);
+
+		const settings = envSchema.parse(loadTomlSettings(configFile));
+
+		expect(settings.APP_NAME).toBe("custom-service");
+		expect(settings.APP_ENV).toBe("dev");
+		expect(settings.HOST).toBe("0.0.0.0");
+		expect(settings.PORT).toBe(9001);
+	});
+
+	test("toml profile overrides base values", () => {
+		const previousAppEnv = process.env.APP_ENV;
+		process.env.APP_ENV = "prod";
+		const values = flattenTomlSettings({
+			app: {
+				name: "custom-service",
+				env: "dev",
+				database_enabled: false,
+			},
+			profiles: {
+				prod: {
+					app: {
+						env: "prod",
+						database_enabled: true,
+						log_level: "warn",
+					},
+				},
+			},
+		});
+
+		if (previousAppEnv === undefined) {
+			delete process.env.APP_ENV;
+		} else {
+			process.env.APP_ENV = previousAppEnv;
+		}
+
+		const settings = envSchema.parse(values);
+
+		expect(settings.APP_ENV).toBe("prod");
+		expect(settings.DATABASE_ENABLED).toBe(true);
+		expect(settings.LOG_LEVEL).toBe("warn");
+	});
+
+	test("production requires a service token", () => {
+		const settings = envSchema.parse({ APP_ENV: "prod" });
+
+		expect(() => validateRuntimeConfiguration(settings)).toThrow(
+			"SVC-CORE-9002",
+		);
+	});
+
+	test("development may run without a service token", () => {
+		const settings = envSchema.parse({ APP_ENV: "dev" });
+
+		expect(validateRuntimeConfiguration(settings).SERVICE_TOKEN).toBe("");
+	});
+
+	test("parses boolean environment strings without treating false as true", () => {
+		const settings = envSchema.parse({
+			SESSION_STORE_ENABLED: "false",
+			KV_TLS: "false",
+			MODEL_ARMOR_ENABLED: "true",
+		});
+
+		expect(settings.SESSION_STORE_ENABLED).toBe(false);
+		expect(settings.KV_TLS).toBe(false);
+		expect(settings.MODEL_ARMOR_ENABLED).toBe(true);
+	});
+
+	test("enabled session store requires a key-value URL", () => {
+		const settings = envSchema.parse({
+			APP_ENV: "dev",
+			SESSION_STORE_ENABLED: true,
+		});
+
+		expect(() => validateRuntimeConfiguration(settings)).toThrow(
+			"SVC-CORE-9003",
+		);
+	});
+
+	test("enabled session store requires private data encryption key", () => {
+		const settings = envSchema.parse({
+			APP_ENV: "dev",
+			SESSION_STORE_ENABLED: true,
+			KV_URL: "redis://localhost:6379",
+		});
+
+		expect(() => validateRuntimeConfiguration(settings)).toThrow(
+			"SVC-CORE-9005",
+		);
+	});
+
+	test.each(["valkey", "redis"] as const)(
+		"accepts the %s key-value provider",
+		(provider) => {
+			const settings = envSchema.parse({ KV_PROVIDER: provider });
+
+			expect(settings.KV_PROVIDER).toBe(provider);
+		},
+	);
+
+	test("rejects an unknown key-value provider", () => {
+		expect(() => envSchema.parse({ KV_PROVIDER: "unknown" })).toThrow();
+	});
+
+	test("production sessions require the __Host cookie prefix", () => {
+		const settings = envSchema.parse({
+			APP_ENV: "prod",
+			SERVICE_TOKEN: "service-token",
+			SESSION_COOKIE_NAME: "session",
+		});
+
+		expect(() => validateRuntimeConfiguration(settings)).toThrow(
+			"SVC-CORE-9004",
+		);
+	});
+});
