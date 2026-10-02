@@ -4,7 +4,11 @@
 
 Accepted
 
-Partially superseded by ADR 0020 for evaluation destinations and metrics.
+## Evolución
+
+La evaluación tiene contrato y criterios propios en ADR 0015. Esta ADR conserva
+una sola responsabilidad: definir qué metadatos pueden cruzar la frontera de
+telemetría, incluido cualquier resultado de evaluación.
 
 ## Context
 
@@ -43,6 +47,10 @@ limitada y aprobación de seguridad.
 Los estados de guardrail deben distinguir al menos `NO_MATCH_FOUND`,
 `MATCH_FOUND`, `FAILURE` y `SKIPPED`. Un `FAILURE` o `SKIPPED` en un flujo que
 requiere sanitización sensible no se registra como `ALLOW`.
+
+Los resultados de evaluación permitidos por ADR 0015 se registran solo como
+métricas de baja cardinalidad y versiones; esta ADR no define ni modifica sus
+criterios, fixtures o gates.
 
 ## Consequences
 

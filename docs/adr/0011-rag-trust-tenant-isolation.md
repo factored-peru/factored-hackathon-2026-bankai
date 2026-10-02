@@ -4,7 +4,12 @@
 
 Accepted
 
-Partially superseded by ADR 0020 for catalog loading and specialized JEV gates.
+## Evolución
+
+La decisión incorpora el orden explícito catálogo → JEV especializado → policy
+→ recuperación. Antes el catálogo se describía sin fijar el gate que lo usa;
+el orden actual evita que un judge o una operación se ejecuten contra opciones
+no versionadas.
 
 ## Context
 
@@ -14,16 +19,23 @@ MVP aprobado.
 
 ## Decision
 
-El backend ofrece dos rutas de recuperación cerradas:
+El backend ofrece dos rutas de recuperación cerradas, invocadas únicamente por
+la ruta autorizada en ADR 0004:
 
-- Structured RAG: templates BigQuery autorizados según ADR 0009.
-- KG-RAG: operaciones versionadas que consumen `graph-vN.msgpack`, manifiesto,
-  checksum y `current.json` publicados por el pipeline en GCS.
+- Structured RAG carga un catálogo versionado de `QueryPlan` con templates
+  BigQuery autorizados según ADR 0009. El JEV Structured solo elige una opción
+  de ese catálogo; policy valida la continuación antes de ejecutar el plan.
+- KG-RAG carga primero un catálogo versionado de operaciones construido desde
+  `graph-vN.msgpack`, manifiesto, checksum y `current.json` publicados por el
+  pipeline en GCS. El JEV KG solo se invoca después de esa carga y policy valida
+  la continuación antes de ejecutar la operación.
 
 El backend deriva tenant, rol y alcance desde la sesión, valida los parámetros
 con Zod y adjunta `EvidenceDTO` con origen, versión, filtros, relaciones y
-métricas. El grafo no acepta consultas libres, y Naive Bayes solo contribuye
-señales exploratorias/provenance, nunca autorización ni acción automática.
+métricas. Las rutas fallan cerradas si falta catálogo, versión, checksum,
+schema, evidencia o autorización. El grafo no acepta consultas libres, y Naive
+Bayes solo contribuye señales exploratorias/provenance, nunca autorización ni
+acción automática.
 
 ## Consequences
 

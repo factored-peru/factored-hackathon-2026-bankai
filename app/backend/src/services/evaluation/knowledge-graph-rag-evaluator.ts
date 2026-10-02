@@ -1,24 +1,30 @@
-import { BaseAgentEvaluator } from "./base-agent-evaluator.js";
-import type { Evaluation, EvaluationRun } from "./contracts.js";
+import type {
+	EvaluationContext,
+	EvaluationResult,
+	RouteEvaluator,
+} from "./contracts.js";
 
-/** Overrides the baseline with KG catalog-before-JEV invariants. */
-export class KnowledgeGraphRagEvaluator extends BaseAgentEvaluator {
-	override evaluate(run: EvaluationRun): readonly Evaluation[] {
-		const base = super.evaluate(run);
-		if (run.route !== "kg_rag") return base;
-		const passed = run.catalogLoaded && run.evidenceVersion !== null;
+/** Adds KG catalog-before-JEV invariants after the shared baseline. */
+export class KnowledgeGraphRagEvaluator implements RouteEvaluator {
+	readonly route = "kg_rag" as const;
+	readonly name = "knowledge_graph_rag";
+	readonly version = "v1";
+
+	evaluate(context: EvaluationContext): readonly EvaluationResult[] {
+		const passed =
+			context.catalogLoaded &&
+			context.catalogLoadedBeforeSpecializedJev &&
+			context.evidenceVersion !== null;
 		return [
-			...base,
 			{
-				metric: "kg_catalog_and_evidence",
+				metric: "kg_catalog_before_jev_and_evidence",
 				score: passed ? 1 : 0,
 				passed,
-				...(passed
-					? {}
-					: {
-							reason:
-								"KG catalog was not loaded before the specialized Jev gate",
-						}),
+				label: passed ? "pass" : "fail",
+				reasonCode: passed ? null : "kg_catalog_or_evidence_missing",
+				evaluator: this.name,
+				evaluatorVersion: this.version,
+				mode: "deterministic",
 			},
 		];
 	}

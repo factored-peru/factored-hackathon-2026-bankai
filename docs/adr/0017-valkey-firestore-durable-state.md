@@ -17,10 +17,14 @@ usa `node-redis` detrás de puertos de dominio, con TLS, IAM Auth, Private
 Service Connect y Direct VPC egress.
 
 Firestore es el almacén durable para casos, checkpoints de LangGraph,
-aprobaciones HITL, estado de workflow y auditoría saneada. Las transiciones
+aprobaciones HITL, estado de workflow y auditoría saneada. También conserva el
+lease transaccional y el estado de ejecución del pipeline definido en ADR 0020;
+ese lease serializa preparación, KDD y publicación de grafo. Las transiciones
 críticas se realizan atómicamente y llevan versión/idempotency key.
 
 ## Consequences
 
-Valkey no conserva evidencia, casos, aprobaciones, auditoría ni checkpoints.
-PostgreSQL y Redis no son componentes soportados del despliegue objetivo.
+Valkey no conserva evidencia, casos, aprobaciones, auditoría, checkpoints ni
+leases del pipeline. BigQuery conserva la traza analítica de ingesta; Firestore
+conserva su coordinación durable. PostgreSQL y Redis no son componentes
+soportados del despliegue objetivo.

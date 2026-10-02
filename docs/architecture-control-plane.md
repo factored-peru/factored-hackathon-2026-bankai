@@ -14,6 +14,15 @@ app/backend                     Bun/TypeScript: autorización y workflow online
 data-ingestion-and-processing   Python 3.12: S3->GCS, KDD y grafo offline
 ```
 
+## Cierre incremental de datos
+
+Cloud Scheduler reconcilia S3→GCS cada 15 minutos con un lookback de 30
+minutos. La finalización de un objeto raw en GCS pasa por Eventarc y una función
+dispatcher que encola Cloud Tasks OIDC. El worker valida una generación, la
+materializa en `verified/`, registra el ledger saneado y carga BigQuery raw.
+Una carga confirmada encola el refresh del Cloud Run Job; su lease Firestore
+serializa prepare, KDD y publicación de `current.json`.
+
 ## Secuencia online
 
 1. El backend verifica el token Firebase y resuelve identidad, tenant, rol y
@@ -36,6 +45,8 @@ data-ingestion-and-processing   Python 3.12: S3->GCS, KDD y grafo offline
   autorizado para la respuesta.
 - Grafo: `graph-vN.msgpack`, manifiesto, checksum y `current.json` en GCS.
 - Estado durable: transición Firestore con versión e idempotency key.
+- Ingesta: hash de objeto, generación, checksum, `run_id`, estado, schema,
+  conteos y job de carga en `ingestion_ledger` de BigQuery.
 
-Los detalles normativos están en los ADR 0004, 0005, 0009, 0011, 0017 y 0018.
-ADR 0020 prevalece para routing, catálogos, vector-RAG y evaluación.
+Los detalles normativos están en los ADR 0004, 0005, 0009, 0011, 0015, 0017,
+0018, 0020 y 0021.

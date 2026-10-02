@@ -4,7 +4,8 @@ Reglas estrictas para agentes que modifiquen esta base Bun/TypeScript.
 
 ## Antes de cambiar codigo
 
-- Lee `README.md`, `docs/sdd.md`, `docs/solid.md`, `docs/errors.md` y la
+- Lee `README.md` —incluida su **Guía de invocación**—, `docs/sdd.md`,
+  `docs/solid.md`, `docs/errors.md` y la
   carpeta relacionada al cambio.
 - Si el cambio usa Bun, TypeScript, Fastify, Zod, Biome, Firebase, Google Cloud
   u otro recurso
@@ -47,6 +48,12 @@ bun run check
 ## Documentacion y operacion
 
 - Si las pruebas pasan, actualiza la documentacion relacionada antes de terminar.
+- Usa sólo scripts declarados en `package.json`. Para Compose local, verifica
+  primero la configuración y confirma que `SERVICE_TOKEN` se recibió por el
+  entorno; no lo sustituyas por un valor documentado ni lo escribas en archivos.
+- `bun run format` reescribe archivos: no lo uses como validación de sólo
+  lectura. Detén procesos y contenedores iniciados para una comprobación local
+  e informa si deben permanecer activos.
 - Consulta los ADR compartidos en `../../docs/adr/` cuando el cambio afecte
   identidad, sesión, datos, recuperación, evaluación o despliegue.
 - No guardes secretos en TOML, `.env.example`, docs ni tests.

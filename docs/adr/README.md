@@ -1,7 +1,9 @@
 # ADR
 
-Architecture Decision Records vigentes del monorepo. Cada registro contiene
-`Status`, `Context`, `Decision` y `Consequences`.
+Architecture Decision Records vigentes del monorepo. Cada `Decision` contiene
+la regla actual y completa de su ámbito; `Evolución`, cuando exista, conserva
+una traza breve del motivo de su precisión. Ningún ADR vigente depende de que
+otro lo reemplace parcial o totalmente.
 
 ## Registros
 
@@ -20,9 +22,9 @@ Architecture Decision Records vigentes del monorepo. Cada registro contiene
 - 0013: presupuestos de recursos del agente.
 - 0014: frontera HTTP, navegador y red en GCP.
 - 0015: evaluación TypeScript y gates de release.
-- 0020: refinamiento de control plane, RAG y evaluación; prevalece para sus
-  secciones sobre 0004, 0011, 0012, 0015 y 0018.
 - 0016: detección y desidentificación de PII.
 - 0017: Valkey efímero y Firestore durable.
 - 0018: fronteras de ejecución, durabilidad y simulación.
 - 0019: estructura de monorepo y propiedad de capas.
+- 0020: pipeline offline de ingesta, KDD y publicación de grafo.
+- 0021: frontend Next.js y entrega mediante Firebase App Hosting.

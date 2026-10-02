@@ -16,6 +16,11 @@ propiedad de su directorio.
 
 ## Reglas transversales
 
+- Antes de invocar una herramienta, lee la sección **Guía de invocación** del
+  `README.md` de la capa propietaria. El README raíz indica qué comandos están
+  disponibles y cuáles son sólo objetivos de arquitectura.
+- Ejecuta los comandos desde el directorio que la guía indique. No inventes
+  scripts, manifiestos o despliegues cuando la capa aún no los tenga.
 - No mezcles código Python offline en el backend ni lógica de negocio online
   dentro del pipeline.
 - Los contratos públicos se cambian primero en su especificación y se prueban
@@ -27,3 +32,6 @@ propiedad de su directorio.
   viven en `docs/adr/`.
 - No guardes secretos, PII cruda, cookies, handles ni artefactos generados en
   Git. Ejecuta las validaciones de la capa afectada antes de cerrar un cambio.
+- `terraform apply`, despliegues de App Hosting, ejecuciones cloud y etapas del
+  pipeline sin `--dry-run` cambian sistemas externos: requieren una tarea que
+  los autorice explícitamente y las credenciales entregadas fuera de Git.

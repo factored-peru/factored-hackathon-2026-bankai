@@ -25,3 +25,27 @@ docs/                           ADR, arquitectura, investigación y planificaci�
 
 Consulta `docs/README.md` para los límites de cada componente y
 `docs/adr/README.md` para las decisiones aceptadas.
+
+## Guía de invocación
+
+Ejecuta cada comando desde su capa; no existe un comando único desde la raíz.
+Las guías locales indican requisitos, validaciones y efectos.
+
+| Capa | Estado | Entrada principal |
+| --- | --- | --- |
+| `app/backend/` | Disponible | `bun run dev`, validaciones Bun y Compose local |
+| `app/frontend/` | Aún sin scaffold | Comandos Next.js previstos con Bun, no ejecutables todavía |
+| `data-ingestion-and-processing/` | CLI disponible como contrato | `bankai-pipeline --dry-run` |
+| `deploy/` | Compose local disponible; Terraform pendiente | `docker compose ... config` |
+| `docs/` | Referencia y validación documental | lectura de ADR y comprobación de enlaces |
+
+Los comandos que creen o modifiquen recursos cloud no son el flujo por defecto:
+requieren autorización explícita, credenciales fuera de Git y los manifiestos
+de infraestructura correspondientes. Las referencias externas utilizadas por
+estas guías son [Bun](https://bun.sh/docs/runtime),
+[Next.js CLI](https://nextjs.org/docs/app/api-reference/cli/next),
+[Python `venv`](https://docs.python.org/3/library/venv.html),
+[Docker Compose](https://docs.docker.com/reference/cli/docker/compose/),
+[Terraform CLI](https://developer.hashicorp.com/terraform/cli/commands),
+[Firebase App Hosting](https://firebase.google.com/docs/app-hosting) y
+[Cloud Run Jobs](https://cloud.google.com/run/docs/execute/jobs).
