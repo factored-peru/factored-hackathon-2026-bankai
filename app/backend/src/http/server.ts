@@ -11,7 +11,7 @@ import {
 } from "../integrations/session-runtime.js";
 import { ItemService } from "../services/item-service.js";
 import { registerErrorHandler } from "./error-handler.js";
-import { registerRoutes } from "./routes.js";
+import { type DisputeHttpRuntime, registerRoutes } from "./routes.js";
 
 export type AppIntegrations = Readonly<{
 	database: Database;
@@ -23,6 +23,7 @@ export type AppIntegrations = Readonly<{
 type BuildServerOptions = Readonly<{
 	env?: Env;
 	integrations?: AppIntegrations;
+	disputeRuntime?: DisputeHttpRuntime;
 }>;
 
 export async function buildServer(options: BuildServerOptions = {}) {
@@ -53,6 +54,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
 		new ItemService(new MemoryItemStore()),
 		runtimeEnv,
 		integrations,
+		options.disputeRuntime,
 	);
 	await app.register(apiReference, {
 		routePrefix: "/docs",

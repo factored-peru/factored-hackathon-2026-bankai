@@ -1,9 +1,9 @@
 {
 	"openapi": "3.1.0",
 	"info": {
-		"title": "Bun TypeScript Service",
+		"title": "Dispute Transaction Support API",
 		"version": "0.1.0",
-		"description": "Canonical spec for the Bun TypeScript service shell."
+		"description": "Canonical contract for local, tenant-isolated transaction-dispute support. Escalations are mock-only and never submit a bank dispute."
 	},
 	"servers": [
 		{
@@ -17,6 +17,9 @@
 		},
 		{
 			"name": "items"
+		},
+		{
+			"name": "disputes"
 		}
 	],
 	"paths": {
@@ -220,6 +223,253 @@
 					}
 				]
 			}
+		},
+		"/v1/sessions": {
+			"post": {
+				"operationId": "createDisputeSession",
+				"tags": ["disputes"],
+				"summary": "Verify an identity token and set an opaque session cookie",
+				"responses": {
+					"201": {
+						"description": "Session created",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/SessionCreated" }
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid identity token",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"502": {
+						"description": "Identity runtime unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/transactions/{transactionId}": {
+			"get": {
+				"operationId": "getTransactionEvidence",
+				"tags": ["disputes"],
+				"summary": "Get authorized transaction evidence",
+				"parameters": [
+					{
+						"name": "transactionId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Synthetic local evidence",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/TransactionEvidence" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Tenant or ownership denied",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Transaction unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/disputes/{disputeId}": {
+			"get": {
+				"operationId": "getDisputeEvidence",
+				"tags": ["disputes"],
+				"summary": "Get authorized dispute evidence",
+				"parameters": [
+					{
+						"name": "disputeId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Synthetic local evidence",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/DisputeEvidence" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Tenant or ownership denied",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Dispute unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/dispute-cases/{caseId}/escalations": {
+			"post": {
+				"operationId": "requestMockEscalation",
+				"tags": ["disputes"],
+				"summary": "Request a mock escalation; it requires an operator decision",
+				"parameters": [
+					{
+						"name": "caseId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": { "$ref": "#/components/schemas/EscalationRequest" }
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Pending approval",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/PendingEscalation" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Capability or ownership denied",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Case state conflict",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/approvals/{approvalId}/decisions": {
+			"post": {
+				"operationId": "decideMockEscalation",
+				"tags": ["disputes"],
+				"summary": "Approve or reject a mock escalation as an operator",
+				"parameters": [
+					{
+						"name": "approvalId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": { "$ref": "#/components/schemas/ApprovalDecision" }
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Decision recorded",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MockEscalationDecision"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Operator capability denied",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Approval state conflict",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -391,6 +641,90 @@
 						"type": "string",
 						"format": "date-time"
 					}
+				},
+				"additionalProperties": false
+			},
+			"SessionCreated": {
+				"type": "object",
+				"required": ["status"],
+				"properties": { "status": { "const": "created" } },
+				"additionalProperties": false
+			},
+			"TransactionEvidence": {
+				"type": "object",
+				"required": [
+					"transactionId",
+					"status",
+					"amountBucket",
+					"currency",
+					"provenance",
+					"version"
+				],
+				"properties": {
+					"transactionId": { "type": "string" },
+					"status": { "enum": ["approved", "declined", "pending", "reversed"] },
+					"amountBucket": { "enum": ["low", "medium", "high"] },
+					"currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+					"provenance": { "const": "synthetic_local_fixture" },
+					"version": { "const": "dispute-demo-v1" }
+				},
+				"additionalProperties": false
+			},
+			"DisputeEvidence": {
+				"type": "object",
+				"required": [
+					"disputeId",
+					"transactionId",
+					"status",
+					"priority",
+					"provenance",
+					"version"
+				],
+				"properties": {
+					"disputeId": { "type": "string" },
+					"transactionId": { "type": "string" },
+					"status": { "enum": ["open", "under_review", "escalated", "closed"] },
+					"priority": { "enum": ["normal", "high"] },
+					"provenance": { "const": "synthetic_local_fixture" },
+					"version": { "const": "dispute-demo-v1" }
+				},
+				"additionalProperties": false
+			},
+			"EscalationRequest": {
+				"type": "object",
+				"required": ["reasonCode"],
+				"properties": {
+					"reasonCode": {
+						"enum": [
+							"unrecognized_transaction",
+							"transaction_declined",
+							"other"
+						]
+					}
+				},
+				"additionalProperties": false
+			},
+			"ApprovalDecision": {
+				"type": "object",
+				"required": ["decision"],
+				"properties": { "decision": { "enum": ["approved", "rejected"] } },
+				"additionalProperties": false
+			},
+			"PendingEscalation": {
+				"type": "object",
+				"required": ["approvalId", "case"],
+				"properties": {
+					"approvalId": { "type": "string" },
+					"case": { "type": "object" }
+				},
+				"additionalProperties": false
+			},
+			"MockEscalationDecision": {
+				"type": "object",
+				"required": ["case", "action"],
+				"properties": {
+					"case": { "type": "object" },
+					"action": { "type": ["object", "null"] }
 				},
 				"additionalProperties": false
 			},

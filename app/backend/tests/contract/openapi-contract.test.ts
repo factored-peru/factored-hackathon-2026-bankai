@@ -15,7 +15,7 @@ describe("OpenAPI contract", () => {
 		});
 
 		expect(response.statusCode).toBe(200);
-		expect(response.json().info.title).toBe("Bun TypeScript Service");
+		expect(response.json().info.title).toBe("Dispute Transaction Support API");
 	});
 
 	test("docs endpoint serves Scalar API reference", async () => {

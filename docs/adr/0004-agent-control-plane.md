@@ -13,9 +13,9 @@ auditables antes de invocar recuperación o un modelo.
 
 ## Context
 
-El asistente combina conversación, datos bancarios estructurados, evidencia de
-grafo y posibles acciones. El modelo no puede ser una frontera de autorización
-ni elegir consultas o efectos libremente.
+Dispute Transaction Support combina conversación, evidencia estructurada de
+transacciones y disputas, y escalamiento humano simulado. El modelo no puede
+ser una frontera de autorización ni elegir consultas o efectos libremente.
 
 ## Decision
 
@@ -45,6 +45,9 @@ sesión -> normalización/privacidad -> Model Armor -> JEV primario
 - No existe vector-RAG, vector store ni fallback factual a LLM. ReAct no está
   activo; queda como `TODO` decidir entre el patrón preconstruido de LangGraph
   y un loop propio, siempre acotado por policy.
+- El primer flujo operativo sólo consulta evidencia autorizada y solicita un
+  escalamiento mock sujeto a aprobación de operador. Presentar, cancelar o
+  modificar una disputa bancaria es una capacidad DENY y no tiene herramienta.
 
 ## Consequences
 

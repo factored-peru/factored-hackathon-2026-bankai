@@ -23,5 +23,6 @@ solo guardan métricas, identificadores saneados y provenance.
 
 ## Consequences
 
-Las respuestas factuales usan consultas exactas y auditables. No se habilita
-PostgreSQL ni SQL libre como mecanismo de recuperación del asistente.
+Las respuestas factuales sobre transacciones y disputas usan consultas exactas
+y auditables. No se habilita PostgreSQL ni SQL libre como mecanismo de
+recuperación del asistente.

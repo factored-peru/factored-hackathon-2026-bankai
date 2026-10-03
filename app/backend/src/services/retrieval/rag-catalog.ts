@@ -1,4 +1,5 @@
 import type { SessionContext } from "../../domain/session.js";
+import { StructuredQueryPlanCatalog } from "../data/structured-query-plan-catalog.js";
 
 export type RagKind = "structured" | "knowledge_graph";
 
@@ -30,14 +31,33 @@ export abstract class BaseRagCatalogRepository {
 	}): Promise<RagCatalogLoadResult>;
 }
 
-/** TODO: connect to the authorized BigQuery QueryPlan catalog. */
+/**
+ * Exposes only safe catalog metadata to the specialized Jev. The SQL remains
+ * inside StructuredQueryPlanCatalog and cannot be returned to a model.
+ */
 export class StructuredRagCatalogRepository extends BaseRagCatalogRepository {
 	readonly kind = "structured" as const;
 
-	async load(): Promise<RagCatalogLoadResult> {
+	constructor(
+		private readonly plans = new StructuredQueryPlanCatalog("v1", []),
+	) {
+		super();
+	}
+
+	async load(input: {
+		session: SessionContext;
+		traceId: string;
+	}): Promise<RagCatalogLoadResult> {
+		const entries = this.plans.entriesFor(input.session);
+		if (entries.length === 0) {
+			return {
+				status: "unavailable",
+				reasonCode: "structured_catalog_unavailable",
+			};
+		}
 		return {
-			status: "unavailable",
-			reasonCode: "structured_catalog_unavailable",
+			status: "ready",
+			catalog: { kind: this.kind, version: this.plans.version, entries },
 		};
 	}
 }

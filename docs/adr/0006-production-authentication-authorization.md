@@ -6,8 +6,8 @@ Accepted
 
 ## Context
 
-Cliente y operador requieren una identidad demostrable sin integrar banca real
-durante el MVP.
+Cliente y operador requieren una identidad demostrable para Dispute Transaction
+Support sin integrar banca real durante el MVP.
 
 ## Decision
 

@@ -40,6 +40,10 @@
 **/*.py[cod]
 **/.pytest_cache/
 **/.venv/
+**/*.egg-info/
+data-ingestion-and-processing/artifacts/
+# Material de consulta local; no forma parte del código ni de los artefactos versionados.
+data-ingestion-and-processing/referencias/
 
 # Terraform local state and providers
 **/.terraform/

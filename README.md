@@ -1,7 +1,8 @@
 # Factored Hackathon 2026 — Bankai
 
-Monorepo del asistente de soporte bancario. Separa explícitamente la experiencia
-web, el control plane online, el procesamiento de datos offline y el despliegue.
+Monorepo de **Dispute Transaction Support**. Separa explícitamente la
+experiencia web, el control plane online, el procesamiento de datos offline y
+el despliegue.
 
 ## Estructura
 
@@ -18,8 +19,9 @@ docs/                           ADR, arquitectura, investigación y planificaci�
 1. Storage Transfer Service copia CSV de S3 a GCS.
 2. El pipeline Python carga, perfila, depura, imputa y publica tablas en
    BigQuery; luego compila un grafo versionado en GCS.
-3. El backend Bun atiende peticiones autenticadas, usa Structured RAG mediante
-   templates BigQuery y KG-RAG sobre el artefacto validado del grafo.
+3. El backend Bun atiende peticiones autenticadas de transacciones y disputas;
+   la primera vertical permite consultar evidencia y escalar un caso mock con
+   aprobación humana, sin presentar ni modificar disputas bancarias.
 4. El frontend se despliega con Firebase App Hosting; backend y jobs se
    despliegan en Cloud Run mediante la infraestructura de `deploy/`.
 

@@ -1,8 +1,8 @@
-import type { QueryPlan } from "../../domain/data/query-plan.js";
 import type {
 	KnowledgeChunk,
 	RetrievalQuery,
 } from "../../domain/retrieval/contracts.js";
+import type { StructuredQueryResolution } from "../data/structured-query-plan-catalog.js";
 
 export interface KnowledgeRetriever {
 	/**
@@ -13,5 +13,8 @@ export interface KnowledgeRetriever {
 }
 
 export interface QueryPlanExecutor {
-	execute(plan: QueryPlan, tenantId: string): Promise<unknown[]>;
+	execute(
+		plan: StructuredQueryResolution & { status: "ready" },
+		tenantId: string,
+	): Promise<unknown[]>;
 }

@@ -1,6 +1,6 @@
 # Backend
 
-API y control plane online del asistente bancario.
+API y control plane online de Dispute Transaction Support.
 
 ## Stack
 
@@ -15,6 +15,12 @@ API y control plane online del asistente bancario.
 La recuperación vectorial está desconectada: no existe corpus ni vector store
 autorizado. Structured RAG y KG-RAG usan catálogos cerrados y fallan cerrados
 hasta que sus adaptadores se implementen.
+
+Structured RAG ya dispone del adaptador BigQuery, pero el catálogo de producción
+permanece vacío hasta aprobar vistas curadas y sus contratos. El adaptador usa
+Application Default Credentials: en escritorio, `gcloud auth application-default
+login`; en Cloud Run, una service account adjunta. No usa claves JSON ni acepta
+SQL, dataset, tabla o filtros enviados por navegador, prompt o modelo.
 
 Python no forma parte de este proceso: el procesamiento y el grafo se producen
 en `../../data-ingestion-and-processing/`.
@@ -32,6 +38,14 @@ docs/         SDD, errores, SOLID y operación específica del backend
 
 Las decisiones compartidas viven en `../../docs/adr/` y la arquitectura en
 `../../docs/architecture-control-plane.md`.
+
+## Alcance de disputas
+
+La vertical actual consulta evidencia de transacción, disputa y caso mediante
+contratos cerrados por tenant. Puede solicitar un **escalamiento mock**: un
+operador decide aprobarlo o rechazarlo y, si se aprueba, se emite un receipt
+verificado con efecto `none`. No existe endpoint ni herramienta para presentar,
+cancelar o modificar una disputa bancaria real.
 
 ## Guía de invocación
 

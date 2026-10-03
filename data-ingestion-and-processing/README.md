@@ -1,7 +1,7 @@
 # Data ingestion and processing
 
-Pipeline offline en Python 3.12. No expone endpoints ni participa en peticiones
-de usuario. La decisión normativa de stack, etapas y publicación vive en
+Pipeline offline en Python 3.12 para Dispute Transaction Support. No expone
+endpoints ni participa en peticiones de usuario. La decisión normativa de stack, etapas y publicación vive en
 `../docs/adr/0020-ingestion-kdd-and-graph-pipeline.md`.
 
 ## Responsabilidades
@@ -19,6 +19,12 @@ de usuario. La decisión normativa de stack, etapas y publicación vive en
 `manifests/source_manifest.txt` contiene el inventario de entradas recibido.
 El código irá bajo `src/`, los ejecutables bajo `scripts/` y las pruebas bajo
 `tests/`.
+
+Los contratos locales iniciales cubren `transactions` y `complaints`: validan
+esquema y producen perfiles agregados, pero no conectan BigQuery ni contienen
+valores de producción. La vinculación directa `complaint_id` → `transaction_id`
+sigue siendo una limitación que debe resolverse en la fuente canónica, no por
+inferencia en el pipeline.
 
 ## Guía de invocación
 
@@ -44,8 +50,37 @@ documenta este aislamiento. `bankai-pipeline` acepta estas etapas: `transfer`,
 | Ejecutar ciclo completo | `bankai-pipeline --stage all --run-id <id>` | Reservado: puede transferir/publicar datos y disparar artefactos. |
 | Pruebas | `python -m pytest` | Ejecutable cuando existan pruebas; actualmente el directorio define su ubicación. |
 
+Para KDD, copia `config/kdd.toml.example` a una ruta segura y ejecuta primero:
+
+```bash
+bankai-pipeline --stage kdd --run-id kdd-local-20261003 --kdd-config /ruta/kdd.toml --dry-run
+```
+
+La implementación compara Apriori y FP-Growth sobre transacciones y reclamos
+por separado. Su propuesta, límites y artefactos se documentan en
+`docs/kdd-dispute-transaction-support.md`; no compila ni publica un grafo.
+
 El cierre automatizado descrito en ADR 0020 invocará el job desde GCP, no desde
 una estación local. Como referencia de operación controlada, un job ya creado
 se ejecuta con `gcloud run jobs execute <JOB> --region <REGION> --wait`; requiere
 el rol de invocación y no debe usarse para crear infraestructura. Consulta la
 [documentación oficial de Cloud Run Jobs](https://cloud.google.com/run/docs/execute/jobs).
+
+## Descubrimiento read-only de BigQuery
+
+La utilidad `scripts/list_bigquery_tables.py` sirve para inspeccionar únicamente
+identificadores de dataset/tabla y tipo de tabla. No ejecuta SQL, no descarga
+filas, schemas ni valores, y no modifica recursos. Usa las Application Default
+Credentials locales ya configuradas.
+
+```bash
+python3.12 scripts/list_bigquery_tables.py --project factored-hackathon --dry-run
+python3.12 scripts/list_bigquery_tables.py --project factored-hackathon
+# para limitar la visibilidad a un dataset
+python3.12 scripts/list_bigquery_tables.py --project factored-hackathon --dataset DATASET_ID
+```
+
+La cuenta necesita `roles/bigquery.metadataViewer` en el proyecto o el alcance
+equivalente de menor privilegio. El resultado sólo debe usarse para definir
+contratos y vistas curadas; nunca se versiona como inventario operativo ni se
+incluyen valores de producción.
