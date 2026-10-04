@@ -1,0 +1,21 @@
+[c3]
+project = "factored-hackathon"
+dataset = "hackathon"
+output_dir = "artifacts/c3"
+maximum_bytes_billed = 1000000000
+alpha = 1.0
+[c3.train]
+start_timestamp = "2023-06-17T00:00:00+00:00"
+end_timestamp = "2025-01-01T00:00:00+00:00"
+positive_rows = 1500
+negative_rows = 10500
+[c3.calibration]
+start_timestamp = "2025-01-01T00:00:00+00:00"
+end_timestamp = "2026-01-01T00:00:00+00:00"
+positive_rows = 400
+negative_rows = 3600
+[c3.test]
+start_timestamp = "2026-01-01T00:00:00+00:00"
+end_timestamp = "2026-06-19T00:00:00+00:00"
+positive_rows = 300
+negative_rows = 4700

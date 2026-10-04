@@ -57,16 +57,35 @@ Cloud Scheduler (15 min; lookback 30 min)
   Una Cloud Task repetida reanuda o devuelve el resultado registrado sin
   duplicar tabla raw, ledger ni refresh.
 - `kdd` genera asociaciones, catálogo de features y targets, población,
-  exclusiones, soporte, confianza y lift. `train-naive-bayes` registra split
-  sin leakage, métricas, matriz de confusión y calibración cuando el modelo sea
-  aplicable.
+  exclusiones, soporte, confianza y lift. `train-naive-bayes` implementa el
+  piloto local C1 de riesgo de SLA: extrae un subconjunto temporal y
+  estratificado de 5,000 reclamos transaccionales, entrena Naive Bayes
+  categórico suavizado y calibra la probabilidad en una partición temporal
+  separada. `train-resolution-baseline` implementa C2 sobre un subconjunto de
+  2,450 reclamos terminales y estima P50/P90 de `resolution_days` por cohorte
+  de prioridad y canal, con fallback global. Ambos registran splits sin
+  leakage, métricas y lineage agregado; no escriben filas, IDs ni scores
+  individuales y no publican un modelo ni un umbral de acción.
+- `train-fraud-baseline`, `train-interaction-risk` y
+  `train-satisfaction-ordinal` completan C3, C4 y C5 como experimentos locales
+  separados. C3 usa muestreo estratificado ponderado y compara contra el score
+  existente; C4 mantiene targets independientes; C5 usa la escala ordinal
+  observada. `evaluate-supervised-suite` sólo consolida manifests y bloqueos
+  de C6–C8. Ninguno publica, altera el backend o habilita automatización.
 - KDD y Naive Bayes son evidencia exploratoria y provenance. No autorizan
   acciones, no cambian policy ni sustituyen JEV o validación determinista del
   backend.
-- `compile-graph` transforma datos curados y resultados KDD en un artefacto
-  interoperable. `publish` valida schema, manifest y checksum, publica
-  `graph-vN.msgpack` y actualiza `current.json` sólo después de una publicación
-  completa y verificable.
+- `compile-graph` v1 consume exclusivamente los artefactos KDD locales de un
+  `run-id`. Valida los catálogos saneados y conserva solo reglas coincidentes
+  de Apriori y FP-Growth con iguales métricas de soporte, confianza y lift.
+  Materializa nodos de población, feature, valor, regla y target; una regla es
+  un nodo para preservar la conjunción de antecedentes. Escribe de forma
+  determinista `graph-v1.msgpack` y `graph-manifest.json` bajo artefactos
+  locales ignorados por Git. No vuelve a consultar BigQuery, no incorpora filas
+  curadas, PII, texto, IDs ni relaciones heurísticas, y no publica el grafo.
+- `publish` permanece pendiente: validará schema, manifest y checksum,
+  publicará `graph-vN.msgpack` y actualizará `current.json` sólo después de
+  una publicación completa y verificable.
 
 Tras una carga raw confirmada, `ingestion-worker` encola `pipeline-refresh`.
 El orquestador inicia el Cloud Run Job con un nuevo `run-id`; el job adquiere un
@@ -84,9 +103,10 @@ Storage Transfer Service, GCS, BigQuery, Firestore y Cloud Run Job.
 
 BigQuery es el único origen estructurado del backend; GCS entrega únicamente
 artefactos publicados y validados conforme a ADR 0011. El backend Bun nunca
-recibe eventos S3/GCS ni accede a S3. La implementación de las etapas, funciones
-Python, colas, imagen, Scheduler y Terraform permanece pendiente en las tareas
-P0 asociadas; ninguna de estas capacidades se asume desplegada.
+recibe eventos S3/GCS ni accede a S3. El compilador local no habilita KG-RAG ni
+es una publicación. La implementación de publicación, funciones Python, colas,
+imagen, Scheduler y Terraform permanece pendiente en las tareas P0 asociadas;
+ninguna de estas capacidades se asume desplegada.
 
 ## References
 

@@ -1,0 +1,26 @@
+[c1]
+# El piloto usa únicamente reclamos de categoría Transactions y nunca persiste filas crudas.
+project = "factored-hackathon"
+dataset = "hackathon"
+output_dir = "artifacts/c1"
+category = "Transactions"
+maximum_bytes_billed = 1000000000
+max_categorical_cardinality = 100
+alpha = 1.0
+
+# Ventanas verificadas contra el inventario actual: junio de 2023 a junio de 2026.
+# El total es exactamente 5,000 filas; no cambiarlo en este piloto.
+[c1.train]
+start_timestamp = "2023-06-17T00:00:00+00:00"
+end_timestamp = "2025-01-01T00:00:00+00:00"
+sample_size = 3500
+
+[c1.calibration]
+start_timestamp = "2025-01-01T00:00:00+00:00"
+end_timestamp = "2026-01-01T00:00:00+00:00"
+sample_size = 750
+
+[c1.test]
+start_timestamp = "2026-01-01T00:00:00+00:00"
+end_timestamp = "2026-06-19T00:00:00+00:00"
+sample_size = 750

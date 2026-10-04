@@ -27,6 +27,62 @@ aproximadas). No existe una relación directa y autorizada entre
 6. Publicar manifest, catálogo de features, perfil y reglas saneadas por
    `run-id`. El resultado es exploratorio y no autoriza acciones online.
 
+## Experimentos supervisados dentro del KDD
+
+Los baselines supervisados son una fase de evaluación del conocimiento
+descubierto, no una extensión del grafo ni un servicio. Cada uno mantiene su
+propio target, instante de predicción, contrato y artefactos; las reglas de
+asociación no se usan como labels ni como decisiones.
+
+### C1 — Riesgo de incumplimiento de SLA (ejecutado)
+
+El piloto `c1-pilot-20261003` leyó de forma acotada 5,000 reclamos
+transaccionales: 3,500 hasta 2024 para entrenamiento, 750 de 2025 para
+calibración y 750 de 2026 hasta el 18 de junio para prueba. Adaptó Naive Bayes
+categórico suavizado con los atributos permitidos al alta y calibración
+Platt/sigmoid. El artefacto no contiene filas, IDs ni scores individuales.
+
+La prueba temporal obtuvo prevalencia 0.217, PR-AUC 0.211, Brier score 0.171 y
+recall 0.000 al umbral informativo 0.5. La señal no supera el baseline de
+prevalencia y no autoriza un umbral, priorización ni integración online. El
+resultado es evidencia para revisar cobertura, features permitidos y calidad de
+la etiqueta antes de una nueva ADR o experimento.
+
+### C2 — Duración de resolución (ejecutado)
+
+C2 usa exclusivamente reclamos `Resolved` o `Closed` con
+`resolution_days` presente; los otros estados no aportan target. La inspección
+agregada encontró 3,165 casos etiquetados, con P50 de 15 días y P90 de 27–28.
+El piloto `c2-pilot-20261003` tomó 2,450 filas temporales y estimó P50/P90 por
+`priority + reception_channel`, con fallback a prioridad y cohorte global. En
+la prueba de 450 casos obtuvo MAE 7.472 días, cobertura empírica P50 de 0.516 y
+P90 de 0.922. Estos resultados describen cohortes históricas; no prometen una
+fecha de resolución ni autorizan una acción operativa.
+
+El comparador global fue ligeramente mejor en esa misma prueba (MAE 7.422 y
+cobertura P90 0.944). Por ello las cohortes de prioridad/canal no se promueven
+como mejora: C2 queda como baseline global de capacidad hasta que exista una
+feature permitida con ganancia temporal demostrable.
+
+### C3–C5 — Suite completa de baselines (ejecutada)
+
+C3 usa Naive Bayes ponderado sobre 21,000 transacciones estratificadas y
+compara contra `fraud_score` calibrado. En prueba, el modelo nuevo obtuvo
+PR-AUC 0.000957 frente a prevalencia 0.000878, mientras `fraud_score` obtuvo
+PR-AUC 0.699446 sobre su población comparable: el score existente domina y el
+baseline nuevo no se promueve.
+
+C4 entrenó por separado seguimiento y escalamiento con atributos previos a la
+interacción. Sus PR-AUC en prueba fueron 0.239391 (seguimiento) y 0.098534
+(escalamiento), con recall cero al umbral informativo 0.5; son baselines de
+diagnóstico, no reglas operativas. C5 modeló la escala observada 1–7 de
+`main_score` con el join exacto de encuesta; obtuvo MAE 1.270024 y kappa
+cuadrático 0.0, sin evidencia para automatizar recuperación de servicio.
+
+`evaluate-supervised-suite` consolida hashes de C1–C5 y conserva C6–C8 como
+bloqueados: falta relación canónica reclamo–operación, evidencia de comercio y
+reconciliación de rail de pagos, respectivamente.
+
 ## Selección de minero de patrones
 
 El KDD v1 conserva ambos mineros sobre la misma matriz para comparar sus
@@ -74,4 +130,41 @@ bankai-pipeline --stage kdd --run-id kdd-20261003 --kdd-config /ruta-segura/kdd.
 
 La segunda orden requiere ADC y acceso read-only a BigQuery. Escribe sólo
 artefactos locales ignorados por Git bajo `artifacts/kdd/`; no crea tablas,
-vistas, cargas, modelos ni artefactos de grafo.
+vistas, cargas ni modelos.
+
+Los experimentos C1 y C2 son etapas separadas de KDD:
+
+```bash
+bankai-pipeline --stage train-naive-bayes --run-id c1-local-20261003 \
+  --c1-config /ruta/c1.toml --dry-run
+bankai-pipeline --stage train-resolution-baseline --run-id c2-local-20261003 \
+  --c2-config /ruta/c2.toml --dry-run
+```
+
+Sus ejecuciones normales sólo realizan las consultas acotadas de la
+configuración y escriben en `artifacts/c1/` o `artifacts/c2/`. No actualizan
+BigQuery, no publican GCS y no habilitan un modelo o grafo en el backend.
+
+## Compilación local del grafo v1
+
+La etapa siguiente consume una carpeta KDD local completa y no vuelve a leer
+BigQuery:
+
+```bash
+bankai-pipeline --stage compile-graph --run-id graph-local-20261003 \
+  --kdd-artifact-dir artifacts/kdd/KDD_RUN_ID --dry-run
+bankai-pipeline --stage compile-graph --run-id graph-local-20261003 \
+  --kdd-artifact-dir artifacts/kdd/KDD_RUN_ID
+```
+
+El compilador valida catálogos, columnas permitidas y métricas; acepta solo
+reglas idénticas de Apriori y FP-Growth. Cada regla se materializa como nodo
+con aristas de antecedentes y una arista `predicts` con soporte, confianza y
+lift. Esto conserva la semántica de una conjunción: no se crean aristas
+directas `feature_value → target` que presentarían una asociación como hecho.
+
+El resultado local es `artifacts/graph/<run-id>/graph-v1.msgpack` y su
+`graph-manifest.json`, ambos reproducibles y sin PII, texto, IDs o filas. No
+publica GCS, no actualiza `current.json`, no genera catálogo KG-RAG y no llama
+al backend; esas responsabilidades siguen pendientes de una ADR e
+implementación posteriores.

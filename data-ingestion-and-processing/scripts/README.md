@@ -2,7 +2,9 @@
 
 El entrypoint es `bankai-pipeline` (o `python -m bankai_pipeline.cli`) y exige
 `--run-id`. Sus etapas son `transfer`, `load`, `prepare`, `kdd`,
-`train-naive-bayes`, `compile-graph` y `publish`.
+`train-naive-bayes`, `train-resolution-baseline`, `train-fraud-baseline`,
+`train-interaction-risk`, `train-satisfaction-ordinal`, `compile-graph` y
+`evaluate-supervised-suite`.
 
 Las implementaciones deben producir manifests, checksums y lineage antes de
 publicar artefactos consumibles por el backend.

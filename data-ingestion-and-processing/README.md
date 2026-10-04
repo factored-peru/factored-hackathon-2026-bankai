@@ -39,9 +39,11 @@ bankai-pipeline --stage all --run-id local-dry-run --dry-run
 ```
 
 El [módulo `venv` de Python](https://docs.python.org/3/library/venv.html)
-documenta este aislamiento. `bankai-pipeline` acepta estas etapas: `transfer`,
-`load`, `prepare`, `kdd`, `train-naive-bayes`, `compile-graph`, `publish` y
-`all`; siempre requiere `--run-id`.
+documenta este aislamiento. Las etapas implementadas son `kdd`, C1
+(`train-naive-bayes`), C2 (`train-resolution-baseline`), C3
+(`train-fraud-baseline`), C4 (`train-interaction-risk`), C5
+(`train-satisfaction-ordinal`), `compile-graph` y
+`evaluate-supervised-suite`; siempre requieren `--run-id`.
 
 | Objetivo | Comando | Estado y efecto |
 | --- | --- | --- |
@@ -58,7 +60,70 @@ bankai-pipeline --stage kdd --run-id kdd-local-20261003 --kdd-config /ruta/kdd.t
 
 La implementación compara Apriori y FP-Growth sobre transacciones y reclamos
 por separado. Su propuesta, límites y artefactos se documentan en
-`docs/kdd-dispute-transaction-support.md`; no compila ni publica un grafo.
+`docs/kdd-dispute-transaction-support.md`. La etapa local `compile-graph`
+materializa solo las reglas coincidentes entre ambos algoritmos; no publica ni
+sirve el grafo.
+
+```bash
+bankai-pipeline --stage compile-graph --run-id graph-local-20261003 \
+  --kdd-artifact-dir artifacts/kdd/KDD_RUN_ID --dry-run
+```
+
+Sin `--dry-run`, la etapa escribe `graph-v1.msgpack` y `graph-manifest.json`
+bajo `artifacts/graph/<run-id>/`. No crea `current.json`, no carga GCS y no
+habilita KG-RAG.
+
+## Piloto C1: incumplimiento de SLA
+
+`train-naive-bayes` implementa únicamente el baseline offline C1. Copia
+`config/c1.toml.example` a una ruta local segura; el ejemplo define 5,000
+reclamos transaccionales muestreados de forma determinista y separados por
+tiempo. No descarga la población completa, no persiste filas ni identificadores
+y no produce una decisión operativa.
+
+```bash
+bankai-pipeline --stage train-naive-bayes --run-id c1-local-20261003 \
+  --c1-config /ruta/c1.toml --dry-run
+```
+
+Sin `--dry-run` consulta sólo las tres ventanas y tamaños declarados en la
+configuración. Escribe `c1-model.json` y `c1-manifest.json` en
+`artifacts/c1/<run-id>/`, con métricas agregadas, lineage y configuración; no
+publica GCS, no actualiza BigQuery, no envía scores al backend y no modifica el
+grafo. El umbral 0.5 del reporte sirve sólo para interpretar una matriz de
+confusión: ningún umbral de priorización está aprobado.
+
+## Piloto C2: duración de resolución
+
+`train-resolution-baseline` calcula P50/P90 de `resolution_days` sólo sobre
+reclamos terminales `Resolved` y `Closed`. `status` se usa exclusivamente para
+seleccionar etiquetas históricas, nunca como predictor. El baseline usa
+cohortes `priority + reception_channel`, con fallback a prioridad y global.
+
+```bash
+bankai-pipeline --stage train-resolution-baseline --run-id c2-local-20261003 \
+  --c2-config /ruta/c2.toml --dry-run
+```
+
+El ejemplo `config/c2.toml.example` limita el piloto a 2,450 filas temporales.
+La ejecución escribe `c2-quantile-baseline.json` y `c2-manifest.json` en
+`artifacts/c2/<run-id>/`. No persiste filas, IDs o predicciones individuales;
+no publica, no modifica BigQuery ni conecta C2 al backend o al grafo.
+
+## Suite C3–C5 y consolidado
+
+C3 pondera por clase para recuperar la prevalencia real de fraude y compara su
+baseline con `fraud_score`; C4 entrena seguimiento y escalamiento por separado;
+C5 usa `main_score` ordinal 1–7 mediante el join canónico `interaction_id`.
+
+```bash
+bankai-pipeline --stage train-fraud-baseline --run-id c3-local-20261003 --c3-config /ruta/c3.toml --dry-run
+bankai-pipeline --stage train-interaction-risk --run-id c4-local-20261003 --c4-config /ruta/c4.toml --dry-run
+bankai-pipeline --stage train-satisfaction-ordinal --run-id c5-local-20261003 --c5-config /ruta/c5.toml --dry-run
+```
+
+`evaluate-supervised-suite` consolida hashes, versiones y bloqueos de C6–C8
+desde los cinco manifiestos; no lee BigQuery ni publica resultados.
 
 El cierre automatizado descrito en ADR 0020 invocará el job desde GCP, no desde
 una estación local. Como referencia de operación controlada, un job ya creado

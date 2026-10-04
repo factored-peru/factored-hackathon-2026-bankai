@@ -8,10 +8,10 @@ Se trasladó como referencia, no como una dependencia o implementación activa.
 `SHA256SUMS` permite comprobar que cada archivo copiado coincide con el
 origen local revisado el 3 de octubre de 2026.
 
-La conclusión arquitectónica no cambia: Bankai no compila ni sirve todavía un
-grafo, y BigQuery continúa siendo la fuente estructurada canónica. Esta guía
-solo conserva fundamentos para decidir una futura ADR y evita confundir reglas
-asociativas, clasificación probabilística y relaciones de grafo.
+BigQuery continúa siendo la fuente estructurada canónica. Bankai ahora
+compila localmente un grafo KDD v1, pero no lo sirve ni publica. Esta guía
+evita confundir reglas asociativas, clasificación probabilística y relaciones
+de grafo.
 
 ## Algoritmos y artefactos identificados
 
@@ -51,7 +51,8 @@ arquetipo predicho de los antecedentes Apriori para evitar la tautología
 ```text
 datos curados -> baseline predictivo con target definido
 datos curados -> reglas KDD con métricas asociativas
-artefactos aprobados -> futuro grafo versionado y con provenance
+reglas KDD consensuadas -> grafo local versionado y con provenance
+artefacto publicado aprobado -> futuro catálogo KG-RAG
 ```
 
 Las rutas `infer_apriori.py`, `infer_apriori_pg.py` y

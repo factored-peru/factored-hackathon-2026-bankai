@@ -1,0 +1,22 @@
+[c2]
+project = "factored-hackathon"
+dataset = "hackathon"
+output_dir = "artifacts/c2"
+category = "Transactions"
+maximum_bytes_billed = 1000000000
+min_segment_rows = 30
+
+[c2.train]
+start_timestamp = "2023-06-17T00:00:00+00:00"
+end_timestamp = "2025-01-01T00:00:00+00:00"
+sample_size = 1500
+
+[c2.calibration]
+start_timestamp = "2025-01-01T00:00:00+00:00"
+end_timestamp = "2026-01-01T00:00:00+00:00"
+sample_size = 500
+
+[c2.test]
+start_timestamp = "2026-01-01T00:00:00+00:00"
+end_timestamp = "2026-06-19T00:00:00+00:00"
+sample_size = 450
