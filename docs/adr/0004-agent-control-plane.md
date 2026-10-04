@@ -4,13 +4,6 @@
 
 Accepted
 
-## Evolución
-
-La decisión se precisó para expresar las rutas reales del `StateGraph` y el
-orden de sus gates. La formulación anterior dejaba la ruta autorizada genérica;
-la actual elimina esa ambigüedad porque el routing y la policy deben ser
-auditables antes de invocar recuperación o un modelo.
-
 ## Context
 
 Dispute Transaction Support combina conversación, evidencia estructurada de
@@ -27,7 +20,7 @@ sesión -> normalización/privacidad -> Model Armor -> JEV primario
   llm -> policy -> respuesta
   database -> catálogo Structured -> JEV Structured -> policy -> Structured RAG
   relations -> catálogo KG -> JEV KG -> policy -> KG-RAG
-  ood -> respuesta segura
+  ood -> policy -> respuesta segura
 ```
 
 - Firebase Auth aporta identidad; el backend resuelve tenant, rol y

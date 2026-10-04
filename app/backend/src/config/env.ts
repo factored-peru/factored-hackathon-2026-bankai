@@ -42,7 +42,7 @@ export const envSchema = z.object({
 	FIRESTORE_ENABLED: envBoolean.default(false),
 	BIGQUERY_ENABLED: envBoolean.default(false),
 	// Structured RAG: tables are fully qualified from these, never from a prompt.
-	BIGQUERY_DATASET: z.string().default("hackathon"),
+	BIGQUERY_DATASET: z.string().default(""),
 	BIGQUERY_JOB_TIMEOUT_MS: z.coerce
 		.number()
 		.int()
@@ -53,6 +53,8 @@ export const envSchema = z.object({
 	GCS_ENABLED: envBoolean.default(false),
 	GCS_GRAPH_ARTIFACT_PREFIX: z.string().default("knowledge-graph/"),
 	CHAT_ENABLED: envBoolean.default(false),
+	/** Product chat is opt-in and cannot silently fall back to demo mode. */
+	AGENTIC_CHAT_ENABLED: envBoolean.default(false),
 	REALTIME_ENABLED: envBoolean.default(false),
 	DEMO_AUTH_ENABLED: envBoolean.default(false),
 	DEMO_ACTOR_HMAC_KEY: z.string().default(""),
@@ -286,6 +288,27 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 	}
 	if (settings.CHAT_ENABLED && !settings.FIRESTORE_ENABLED) {
 		throw new Error("SVC-CORE-9008: CHAT_ENABLED requires FIRESTORE_ENABLED");
+	}
+	if (settings.AGENTIC_CHAT_ENABLED) {
+		const missing = [
+			["CHAT_ENABLED", settings.CHAT_ENABLED],
+			["REALTIME_ENABLED", settings.REALTIME_ENABLED],
+			["FIRESTORE_ENABLED", settings.FIRESTORE_ENABLED],
+			["SESSION_STORE_ENABLED", settings.SESSION_STORE_ENABLED],
+			["BIGQUERY_ENABLED", settings.BIGQUERY_ENABLED],
+			["JEV_ENABLED", settings.JEV_ENABLED],
+			["VERTEX_AI_ENABLED", settings.VERTEX_AI_ENABLED],
+			["MODEL_ARMOR_ENABLED", settings.MODEL_ARMOR_ENABLED],
+			["GCS_ENABLED", settings.GCS_ENABLED],
+		]
+			.filter(([, enabled]) => !enabled)
+			.map(([name]) => name);
+		if (settings.DEMO_AUTH_ENABLED) missing.push("DEMO_AUTH_ENABLED=false");
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9010: AGENTIC_CHAT_ENABLED requires ${missing.join(", ")}`,
+			);
+		}
 	}
 
 	if (settings.SESSION_STORE_ENABLED && settings.KV_URL.length === 0) {

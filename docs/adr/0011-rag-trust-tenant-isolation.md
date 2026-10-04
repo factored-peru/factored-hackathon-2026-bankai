@@ -4,13 +4,6 @@
 
 Accepted
 
-## Evolución
-
-La decisión incorpora el orden explícito catálogo → JEV especializado → policy
-→ recuperación. Antes el catálogo se describía sin fijar el gate que lo usa;
-el orden actual evita que un judge o una operación se ejecuten contra opciones
-no versionadas.
-
 ## Context
 
 Los datos estructurados, políticas y señales de conocimiento requieren una
@@ -22,7 +15,7 @@ MVP aprobado.
 El backend ofrece dos rutas de recuperación cerradas, invocadas únicamente por
 la ruta autorizada en ADR 0004:
 
-- Structured RAG carga un catálogo versionado de `QueryPlan` con templates
+- Structured RAG carga un catálogo versionado de consultas cerradas con templates
   BigQuery autorizados según ADR 0009. El JEV Structured solo elige una opción
   de ese catálogo; policy valida la continuación antes de ejecutar el plan.
 - KG-RAG carga primero un catálogo versionado de operaciones construido desde
