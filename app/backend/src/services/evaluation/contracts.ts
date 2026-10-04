@@ -35,6 +35,11 @@ export type EvaluationContext = Readonly<{
 	retrievalInvoked?: boolean;
 	retrievalAttemptCount?: number;
 	retrievalSuccessCount?: number;
+	/**
+	 * Result of comparing a synthetic KG selection to its fixture. It carries no
+	 * prompt, operation parameters, evidence, or retrieved content.
+	 */
+	kgSelectionMatchesFixture?: boolean;
 	errorCode?: string | null;
 }>;
 

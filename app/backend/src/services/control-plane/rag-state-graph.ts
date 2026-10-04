@@ -7,6 +7,12 @@ import {
 } from "@langchain/langgraph";
 import type { SessionContext } from "../../domain/session.js";
 import type { BaseRag } from "../retrieval/base-rag.js";
+import type { KnowledgeGraphRagExecutor } from "../retrieval/knowledge-graph-rag.js";
+import {
+	type KnowledgeGraphOperationSelector,
+	type KnowledgeGraphSelection,
+	knowledgeGraphSelectionSchema,
+} from "../retrieval/knowledge-graph-selection.js";
 import type {
 	BaseRagCatalogRepository,
 	RagCatalog,
@@ -53,6 +59,10 @@ const ragState = Annotation.Root({
 	route: Annotation<PrimaryJevRoute>,
 	catalog: Annotation<RagCatalog | null>,
 	terminalReason: Annotation<string | null>,
+	knowledgeGraphSelection: Annotation<KnowledgeGraphSelection | null>({
+		value: (_left, right) => right,
+		default: () => null,
+	}),
 	// Persisted per thread by the checkpointer; `begin_turn` appends the user turn.
 	history: Annotation<ConversationTurn[]>({
 		default: () => [],
@@ -73,9 +83,9 @@ export type RagStateGraphDependencies = Readonly<{
 	structuredCatalog: BaseRagCatalogRepository;
 	knowledgeGraphCatalog: BaseRagCatalogRepository;
 	structuredJev: CatalogJevRouter;
-	knowledgeGraphJev: CatalogJevRouter;
+	knowledgeGraphJev: KnowledgeGraphOperationSelector;
 	structuredRag: BaseRag;
-	knowledgeGraphRag: BaseRag;
+	knowledgeGraphRag: KnowledgeGraphRagExecutor;
 	/** Thread memory. Omit for stateless runs; inject an adapter per environment. */
 	checkpointer?: BaseCheckpointSaver;
 }>;
@@ -112,6 +122,7 @@ export function createRagStateGraph(dependencies: RagStateGraphDependencies) {
 			executionOrder: null,
 			terminalReason: null,
 			catalog: null,
+			knowledgeGraphSelection: null,
 			history: [{ role: "user" as const, content: state.query }],
 		}))
 		.addNode("primary_jev", async (state) => ({
@@ -186,24 +197,56 @@ export function createRagStateGraph(dependencies: RagStateGraphDependencies) {
 			if (state.catalog === null) {
 				return { ...append("kg_jev"), terminalReason: "kg_catalog_missing" };
 			}
-			const allowed = await dependencies.knowledgeGraphJev.assess({
-				query: state.query,
-				session: state.session,
-				catalog: state.catalog,
-				traceId: state.traceId,
-			});
-			return allowed
-				? append("kg_jev")
-				: { ...append("kg_jev"), terminalReason: "kg_jev_denied" };
+			let proposal: unknown;
+			try {
+				proposal = await dependencies.knowledgeGraphJev.select({
+					query: state.query,
+					catalog: state.catalog,
+					traceId: state.traceId,
+				});
+			} catch {
+				return { ...append("kg_jev"), terminalReason: "kg_jev_unavailable" };
+			}
+			const selection = knowledgeGraphSelectionSchema.safeParse(proposal);
+			if (!selection.success) {
+				return { ...append("kg_jev"), terminalReason: "kg_jev_invalid" };
+			}
+			if (selection.data.decision === "ambiguous") {
+				return {
+					...append("kg_jev"),
+					terminalReason: "kg_selection_ambiguous",
+				};
+			}
+			if (selection.data.decision === "deny") {
+				return { ...append("kg_jev"), terminalReason: "kg_jev_denied" };
+			}
+			const selected = selection.data as Extract<
+				KnowledgeGraphSelection,
+				{ decision: "select" }
+			>;
+			const listed = state.catalog.entries.some(
+				(entry) =>
+					entry.id === selected.operationId &&
+					entry.version === selected.version,
+			);
+			return listed
+				? { ...append("kg_jev"), knowledgeGraphSelection: selected }
+				: {
+						...append("kg_jev"),
+						terminalReason: "kg_operation_not_allowlisted",
+					};
 		})
 		.addNode("kg_rag", async (state) => {
 			if (state.catalog === null) {
 				return { ...append("kg_rag"), terminalReason: "kg_catalog_missing" };
 			}
-			const result = await dependencies.knowledgeGraphRag.execute({
-				query: state.query,
+			if (state.knowledgeGraphSelection === null) {
+				return { ...append("kg_rag"), terminalReason: "kg_selection_missing" };
+			}
+			const result = await dependencies.knowledgeGraphRag.executeSelection({
 				session: state.session,
 				catalog: state.catalog,
+				selection: state.knowledgeGraphSelection,
 				traceId: state.traceId,
 			});
 			return result.status === "ready"

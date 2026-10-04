@@ -19,6 +19,7 @@ La política por defecto es:
 | Gemini/Vertex | sí | sí | sí, con contrato/región | no crudo | no |
 | Model Armor + SDP Advanced | sí | sí | sí, para inspección/redacción | no crudo | no |
 | Jev | sí | sí | no | no | no |
+| Langfuse Cloud US | sólo metadata saneada | sólo metadata saneada | no | no | no |
 | OpenRouter/otro no aprobado | sí | no por defecto | no | no | no |
 | Logs/telemetría | metadata | metadata | no | no | no |
 
@@ -44,6 +45,20 @@ training_policy
 dpa_status
 failure_mode
 ```
+
+Langfuse complementa OpenTelemetry como destino de observabilidad, no como
+fuente de datos, autorización, memoria ni evaluación decisoria. Su única
+instancia aprobada para el MVP es Cloud US. La activación requiere registrar
+endpoint, región, retención, DPA, subprocesadores, versión del SDK y política
+de exportación; sus claves viven sólo en Secret Manager. Si falta cualquiera
+de esos registros o de las claves, el exportador queda deshabilitado.
+
+El adaptador hacia Langfuse emite únicamente spans manuales y allowlisted.
+Quedan prohibidos callbacks, auto-instrumentación o SDKs que capturen prompt,
+respuesta, mensajes, argumentos, resultados de tools, filas, evidencia,
+adjuntos o atributos equivalentes. Tenant, sesión, usuario y correlación se
+exportan sólo como pseudónimos HMAC rotables y nunca como identificadores
+recibidos desde el navegador.
 
 Sensitive Data Protection Advanced será la configuración base. El
 `inspectTemplate` define los infoTypes predefinidos y personalizados; el

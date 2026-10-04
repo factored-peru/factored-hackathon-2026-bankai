@@ -10,6 +10,12 @@ La evaluación tiene contrato y criterios propios en ADR 0015. Esta ADR conserva
 una sola responsabilidad: definir qué metadatos pueden cruzar la frontera de
 telemetría, incluido cualquier resultado de evaluación.
 
+Los documentos de observabilidad y CI/CD incorporados para la hackathon añaden
+Langfuse Cloud US como visualizador OTel y exigen trazabilidad causal de la
+decisión. Esa adición no relaja la prohibición de contenido: para este dominio,
+la cadena causal se reconstruye con IDs pseudonimizados, versiones, estados y
+métricas, nunca con prompts ni respuestas.
+
 ## Context
 
 OpenTelemetry define atributos GenAI que pueden contener prompts, mensajes,
@@ -52,6 +58,28 @@ Los resultados de evaluación permitidos por ADR 0015 se registran solo como
 métricas de baja cardinalidad y versiones; esta ADR no define ni modifica sus
 criterios, fixtures o gates.
 
+Cuando se configure Langfuse Cloud US, el backend usa un `TracerProvider`
+aislado con spans creados manualmente desde el adaptador seguro. No se activa
+un callback LangChain/LangGraph ni auto-instrumentación de proveedor, porque
+pueden capturar contenido. El recurso, nombre de span, atributos y eventos se
+validan contra una allowlist antes de exportar.
+
+La traza permitida preserva el orden causal, no el contenido:
+
+```text
+conversation -> session -> input/privacy -> model_armor -> primary_jev
+  -> catalog -> specialized_jev -> policy -> retrieval_or_tool
+  -> response/privacy -> durable_audit -> evaluation
+```
+
+Cada span puede contener resultado, clase de riesgo, versión de policy,
+catálogo, modelo, template, latencia, contadores de tokens, intento y código
+de error allowlisted. La correlación externa usa un pseudónimo HMAC rotado; el
+`trace_id` de entrada, `session_id`, `user_id` y `tenant_id` crudos no cruzan
+la frontera. P0 conserva exportación completa sólo para fixtures sintéticos;
+la tasa de muestreo productiva y el presupuesto de unidades se configuran por
+entorno antes de activar tráfico real.
+
 ## Consequences
 
 - El debugging usa IDs, hashes y snapshots sintéticos, no datos reales.
@@ -63,7 +91,12 @@ criterios, fixtures o gates.
 - Las métricas pueden agregarse por proveedor, riesgo, tool y resultado sin
   exportar contenido.
 - La instrumentación debe probarse como parte de la suite de privacidad.
+- Una operación con efecto distinto de `none` requiere un span de permiso y
+  auditoría durable previo a la ejecución. La ausencia de ese registro bloquea
+  el efecto; un fallo del exportador externo no se convierte en permiso.
 
 ## Referencias
 
 - [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)
+- [Langfuse JS/TS observability SDK](https://langfuse.com/docs/observability/sdk/overview)
+- [Langfuse data regions](https://langfuse.com/security/data-regions)

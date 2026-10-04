@@ -12,6 +12,11 @@ responde a que no existe corpus aprobado ni proveedor de judge habilitado: la
 calidad se observa primero y solo se convierte en bloqueo tras una línea base
 revisada por humanos.
 
+La evolución actual fija CI de PR con pruebas deterministas y agrega una
+ejecución nocturna/manual opt-in contra JEV con fixtures sintéticos. Langfuse
+Cloud US visualiza trazas y scores saneados vía ADR 0012, pero no reemplaza los
+evaluadores TypeScript ni define gates.
+
 ## Context
 
 Las pruebas unitarias no bastan para validar una trayectoria agentic correcta,
@@ -54,10 +59,20 @@ los scores P0 son `informational`: el runner falla solo ante fixture o contrato
 inválido, o ante error técnico. Activar thresholds bloqueantes requiere nueva
 ADR y una línea base revisada por humanos.
 
-OpenTelemetry emite únicamente atributos saneados de métricas y BigQuery
-conserva resultados versionados cuando exista su adaptador, bajo la frontera de
-ADR 0012. No se instala ni levanta Docker de evaluación, ni se instalan o
-configuran LangSmith, DeepEval, Promptfoo, AgentEvals o DeepAgents en P0.
+La CI de cada PR bloquea cambios si fallan contrato OpenAPI, pruebas Bun,
+tipos, Biome, pruebas Python o la matriz determinista. Sus artefactos sólo
+contienen resumen, versiones y reason codes allowlisted. No necesita secretos
+ni proveedores. Un workflow nocturno o manual, protegido por entorno, puede
+ejecutar la batería JEV contra un proveedor configurado: parte de una ejecución
+limpia, realiza un rerun idéntico y compara variantes sintéticas de una sola
+edición contra el ruido de rerun. Informa flip, drift y cruces de confianza,
+pero no bloquea PR ni despliegue hasta que exista baseline humana.
+
+OpenTelemetry emite únicamente atributos saneados de métricas; Langfuse Cloud
+US puede recibirlos bajo ADR 0012 y BigQuery conserva resultados versionados
+cuando exista su adaptador. No se instala ni levanta Docker de evaluación, ni
+se instalan o configuran LangSmith, DeepEval, Promptfoo, AgentEvals o
+DeepAgents en P0.
 
 El comparador `baseline` se evalúa como trayectoria `llm` separada. No se le
 aplican los criterios de aprobación del control plane: su evaluador determina
@@ -78,6 +93,7 @@ baseline en una vía de release ni de acceso a datos.
 | Promptfoo | golden set, assertions propias y regresión CI | paquete, YAML, UI, servidor, Docker y red-team |
 | JEV / TypeSafe | judge acotado detrás de `JudgeEvaluator` | SDK, API key, autorización o ejecución |
 | LangSmith / DeepAgents | ninguno | SDK, tracing, almacenamiento, control plane o loop agentic |
+| Langfuse Cloud US | visualización OTel de metadata allowlisted | prompts, respuestas, datasets reales, evaluación decisoria o autorización |
 
 Si en el futuro una batería end-to-end amplia, comparación de proveedores o
 red-team exige Promptfoo, se ejecutará como job efímero de CI con Node 24 y
@@ -92,4 +108,7 @@ validar contrato, seguridad ni trayectoria inicial.
 ## Referencias
 
 - `../planning/to-adopt/good-evals.md`
+- `../planning/to-adopt/AI Agent Engineering - Making AI Agents Observable, Monitorable, and Production-Ready [Tutorial + Code].pdf`
+- `../planning/to-adopt/CD Pipelines [Tutorial With Code].pdf`
+- `../planning/to-adopt/prompt injection jev.pdf`
 - https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/

@@ -1,0 +1,297 @@
+import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { encode } from "@msgpack/msgpack";
+import type { SessionContext } from "../src/domain/session.js";
+import { GcsKnowledgeGraphArtifactRepository } from "../src/integrations/kg/gcs-knowledge-graph-artifact-repository.js";
+import { LocalKnowledgeGraphArtifactRepository } from "../src/integrations/kg/local-knowledge-graph-runtime.js";
+import { KnowledgeGraphRag } from "../src/services/retrieval/knowledge-graph-rag.js";
+
+const session: SessionContext = {
+	sessionId: "session-a",
+	userId: "user-a",
+	tenantId: "demo-bankai",
+	scopes: [],
+	roles: ["customer"],
+	capabilities: [],
+	sessionVersion: 1,
+	createdAt: "2026-01-01T00:00:00.000Z",
+	lastSeenAt: "2026-01-01T00:00:00.000Z",
+	expiresAt: "2026-01-01T01:00:00.000Z",
+	revokedAt: null,
+};
+
+function sha(content: Uint8Array): string {
+	return createHash("sha256").update(content).digest("hex");
+}
+
+async function fixture(corrupt = false) {
+	const root = await mkdtemp(join(tmpdir(), "bankai-kg-"));
+	const run = "graph-fixture-2026";
+	const version = join(root, "demo-bankai", run);
+	await mkdir(version, { recursive: true });
+	const graph = {
+		format: "bankai-kdd-graph",
+		schema_version: "bankai-kdd-graph-v1",
+		source: {
+			kdd_run_id: "kdd-fixture-2026",
+			case_catalog_version: "bankai-dispute-kg-cases-v1",
+		},
+		nodes: [
+			{
+				id: "case:C1",
+				kind: "case",
+				attributes: {
+					case_id: "C1",
+					status: "exploratory_not_promoted",
+					target: "sla_breached",
+					predictors: ["priority"],
+					limitation: "No threshold.",
+				},
+			},
+			{
+				id: "population:transactions",
+				kind: "population",
+				attributes: { name: "transactions", target: "transaction_status" },
+			},
+			{
+				id: "value:transactions:channel=POS",
+				kind: "feature_value",
+				attributes: { feature: "channel", value: "POS" },
+			},
+			{
+				id: "target:transactions:transaction_status=DECLINED",
+				kind: "target",
+				attributes: { feature: "transaction_status", value: "DECLINED" },
+			},
+			{
+				id: "rule:transactions:1",
+				kind: "rule",
+				attributes: { population: "transactions" },
+			},
+		],
+		edges: [
+			{
+				source: "case:C1",
+				target: "population:transactions",
+				relation: "applies_to",
+				attributes: {},
+			},
+			{
+				source: "value:transactions:channel=POS",
+				target: "rule:transactions:1",
+				relation: "antecedent",
+				attributes: {},
+			},
+			{
+				source: "rule:transactions:1",
+				target: "target:transactions:transaction_status=DECLINED",
+				relation: "predicts",
+				attributes: {
+					support: 0.4,
+					confidence: 0.8,
+					lift: 1.6,
+					algorithms: ["apriori", "fpgrowth"],
+				},
+			},
+		],
+	};
+	const graphBytes = Buffer.from(encode(graph));
+	const manifest = Buffer.from(
+		JSON.stringify({
+			schema_version: "bankai-kdd-graph-v1",
+			run_id: run,
+			graph_file: "graph-v1.msgpack",
+			graph_sha256: sha(graphBytes),
+			source: graph.source,
+		}),
+	);
+	const catalog = Buffer.from(
+		JSON.stringify({
+			schema_version: "bankai-kg-operation-catalog-v1",
+			kind: "knowledge_graph",
+			version: "kg-v1-fixture",
+			graph_schema_version: "bankai-kdd-graph-v1",
+			operations: [
+				{
+					id: "kg.case.summary",
+					version: "v1",
+					description: "case",
+					allowedRoles: ["customer"],
+					parameters: [
+						{ name: "case_id", type: "string", allowedValues: ["C1"] },
+					],
+				},
+				{
+					id: "kg.population.summary",
+					version: "v1",
+					description: "population",
+					allowedRoles: ["customer"],
+					parameters: [
+						{
+							name: "population",
+							type: "string",
+							allowedValues: ["transactions"],
+						},
+					],
+				},
+				{
+					id: "kg.rules.by-target",
+					version: "v1",
+					description: "target",
+					allowedRoles: ["customer"],
+					parameters: [
+						{
+							name: "target",
+							type: "string",
+							allowedValues: ["transaction_status=DECLINED"],
+						},
+						{
+							name: "population",
+							type: "string",
+							allowedValues: ["transactions"],
+						},
+					],
+				},
+				{
+					id: "kg.rules.by-feature-value",
+					version: "v1",
+					description: "feature",
+					allowedRoles: ["customer"],
+					parameters: [
+						{ name: "item", type: "string", allowedValues: ["channel=POS"] },
+						{
+							name: "population",
+							type: "string",
+							allowedValues: ["transactions"],
+						},
+					],
+				},
+			],
+		}),
+	);
+	await writeFile(join(version, "graph-v1.msgpack"), graphBytes);
+	await writeFile(join(version, "graph-manifest.json"), manifest);
+	await writeFile(join(version, "kg-operation-catalog.json"), catalog);
+	const current = {
+		schema_version: "bankai-local-kg-publication-v1",
+		tenant_id: "demo-bankai",
+		run_id: run,
+		catalog_version: "kg-v1-fixture",
+		artifact_dir: run,
+		files: {
+			"graph-v1.msgpack": corrupt ? "0".repeat(64) : sha(graphBytes),
+			"graph-manifest.json": sha(manifest),
+			"kg-operation-catalog.json": sha(catalog),
+		},
+		provenance: {
+			kdd_run_id: "kdd-fixture-2026",
+			case_catalog_version: "bankai-dispute-kg-cases-v1",
+		},
+	};
+	await writeFile(
+		join(root, "demo-bankai", "current.json"),
+		JSON.stringify(current),
+	);
+	return root;
+}
+
+describe("LocalKnowledgeGraphArtifactRepository", () => {
+	test("validates the local pointer and executes only catalogued operations", async () => {
+		const root = await fixture();
+		try {
+			const repository = new LocalKnowledgeGraphArtifactRepository(
+				root,
+				"demo-bankai",
+			);
+			const loaded = await repository.load({ session, traceId: "trace-a" });
+			expect(loaded.status).toBe("ready");
+			if (loaded.status !== "ready") return;
+			const rag = new KnowledgeGraphRag(
+				repository,
+				() => new Date("2026-01-01T00:00:00.000Z"),
+			);
+			const result = await rag.executeSelection({
+				session,
+				catalog: loaded.catalog,
+				traceId: "trace-a",
+				selection: {
+					decision: "select",
+					operationId: "kg.rules.by-feature-value",
+					version: "v1",
+					parameters: { item: "channel=POS", population: "transactions" },
+				},
+			});
+			expect(result.status).toBe("ready");
+			if (result.status !== "ready") return;
+			expect(result.evidence[0]?.content).toContain(
+				"Exploratory aggregate association",
+			);
+			const blocked = await rag.executeSelection({
+				session,
+				catalog: loaded.catalog,
+				traceId: "trace-b",
+				selection: {
+					decision: "select",
+					operationId: "kg.rules.by-feature-value",
+					version: "v1",
+					parameters: { item: "customer_id=LEAK", population: "transactions" },
+				},
+			});
+			expect(blocked).toEqual({
+				status: "failed",
+				reasonCode: "kg_parameters_invalid",
+			});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("fails closed for corrupt artifacts and a foreign tenant", async () => {
+		const root = await fixture(true);
+		try {
+			const repository = new LocalKnowledgeGraphArtifactRepository(
+				root,
+				"demo-bankai",
+			);
+			expect(await repository.load({ session, traceId: "trace-a" })).toEqual({
+				status: "unavailable",
+				reasonCode: "kg_catalog_unavailable",
+			});
+			expect(
+				await repository.load({
+					session: { ...session, tenantId: "foreign" },
+					traceId: "trace-b",
+				}),
+			).toEqual({
+				status: "unavailable",
+				reasonCode: "kg_tenant_not_authorized",
+			});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("uses the same immutable validation contract over a GCS bucket transport", async () => {
+		const root = await fixture();
+		try {
+			const repository = new GcsKnowledgeGraphArtifactRepository(
+				{
+					file(name: string) {
+						return {
+							download: async () => [await readFile(join(root, name))],
+						};
+					},
+				} as never,
+				"demo-bankai",
+			);
+			expect(
+				await repository.load({ session, traceId: "trace-gcs" }),
+			).toMatchObject({ status: "ready" });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});

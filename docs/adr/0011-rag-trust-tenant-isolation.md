@@ -23,6 +23,13 @@ la ruta autorizada en ADR 0004:
   pipeline en GCS. El JEV KG solo se invoca después de esa carga y policy valida
   la continuación antes de ejecutar la operación.
 
+Para desarrollo y pruebas, un adaptador local explícitamente opt-in puede leer
+el mismo contrato de versión inmutable (`current.json`, manifiesto, checksum,
+MsgPack y catálogo) desde una ruta ignorada por Git. Está limitado a
+`demo-bankai`, está prohibido en producción y no reemplaza el publicador GCS.
+Las operaciones v1 son resumen de caso/población y reglas corroboradas por
+target o feature/value; no reciben un lenguaje de consulta libre.
+
 El backend deriva tenant, rol y alcance desde la sesión, valida los parámetros
 con Zod y adjunta `EvidenceDTO` con origen, versión, filtros, relaciones y
 métricas. Las rutas fallan cerradas si falta catálogo, versión, checksum,

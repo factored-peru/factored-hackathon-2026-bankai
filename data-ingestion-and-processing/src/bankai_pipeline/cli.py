@@ -26,7 +26,9 @@ from bankai_pipeline.c5 import load_config as load_c5_config
 from bankai_pipeline.c5 import run as run_c5
 from bankai_pipeline.dispute_contracts import CONTRACTS
 from bankai_pipeline.graph import compile_graph, graph_dry_run_plan
+from bankai_pipeline.kg_publication import local_publication_dry_run, publish_local_graph
 from bankai_pipeline.kdd import dry_run_plan, load_config, run_kdd
+from bankai_pipeline.preparation import preparation_dry_run_plan
 from bankai_pipeline.suite import build as build_suite
 
 
@@ -56,6 +58,18 @@ def main() -> None:
         type=Path,
         help="Versioned TOML configuration required when --stage kdd is executed.",
     )
+    parser.add_argument("--supervised-suite-artifact-dir", type=Path)
+    parser.add_argument(
+        "--graph-artifact-dir",
+        type=Path,
+        help="Compiled graph directory required when --stage publish is executed.",
+    )
+    parser.add_argument(
+        "--local-target",
+        type=Path,
+        help="Local-only KG publication root required when --stage publish is executed.",
+    )
+    parser.add_argument("--kg-tenant-id", default="demo-bankai")
     parser.add_argument(
         "--c1-config",
         type=Path,
@@ -88,6 +102,21 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if args.stage == "prepare":
+        if not args.dry_run:
+            parser.error(
+                "prepare cloud execution is unavailable until the ADR 0020 ingestion worker "
+                "has accepted a verified object and recorded the ledger"
+            )
+        print(
+            json.dumps(
+                preparation_dry_run_plan(tuple(CONTRACTS.values())),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return
+
     if args.stage == "kdd":
         if args.kdd_config is None:
             parser.error("--kdd-config is required for --stage kdd")
@@ -108,11 +137,25 @@ def main() -> None:
     if args.stage == "compile-graph":
         if args.kdd_artifact_dir is None:
             parser.error("--kdd-artifact-dir is required for --stage compile-graph")
+        case_dirs = {
+            "C1": args.c1_artifact_dir,
+            "C2": args.c2_artifact_dir,
+            "C3": args.c3_artifact_dir,
+            "C4": args.c4_artifact_dir,
+            "C5": args.c5_artifact_dir,
+        }
+        supplied_cases = [value is not None for value in case_dirs.values()]
+        if args.supervised_suite_artifact_dir is None and any(supplied_cases):
+            parser.error("--supervised-suite-artifact-dir is required with case artifacts")
+        if args.supervised_suite_artifact_dir is not None and not all(supplied_cases):
+            parser.error("all --cN-artifact-dir values are required with --supervised-suite-artifact-dir")
+        suite = args.supervised_suite_artifact_dir
+        artifacts = case_dirs if suite is not None else None
         if args.dry_run:
             print(
                 json.dumps(
                     graph_dry_run_plan(
-                        args.kdd_artifact_dir, args.graph_output_dir, args.run_id
+                        args.kdd_artifact_dir, args.graph_output_dir, args.run_id, suite, artifacts
                     ),
                     ensure_ascii=False,
                     sort_keys=True,
@@ -120,9 +163,21 @@ def main() -> None:
             )
             return
         manifest = compile_graph(
-            args.kdd_artifact_dir, args.graph_output_dir, args.run_id
+            args.kdd_artifact_dir, args.graph_output_dir, args.run_id, suite, artifacts
         )
         print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+        return
+
+    if args.stage == "publish":
+        if args.graph_artifact_dir is None or args.local_target is None:
+            parser.error("--graph-artifact-dir and --local-target are required for local KG publication")
+        if args.dry_run:
+            print(json.dumps(local_publication_dry_run(args.graph_artifact_dir, args.local_target, args.kg_tenant_id), ensure_ascii=False, sort_keys=True))
+            return
+        pointer = publish_local_graph(args.graph_artifact_dir, args.local_target, args.kg_tenant_id)
+        print(json.dumps(pointer, ensure_ascii=False, sort_keys=True))
+        # TODO(adr-0020-cloud): replace this local-only adapter with GCS immutable
+        # publication and lease-controlled current.json once cloud infrastructure exists.
         return
 
     if args.stage == "train-naive-bayes":

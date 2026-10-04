@@ -56,6 +56,7 @@ app/backend/scripts/*.js
 app/backend/src/**/*.js
 app/backend/tests/**/*.js
 app/backend/casos.txt
+app/backend/.local/
 
 # Python packaging artifacts
 *.egg-info/

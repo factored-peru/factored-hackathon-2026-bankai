@@ -23,6 +23,12 @@ Usar un firewall determinista mínimo del backend para impedir el cruce
 accidental de secretos y PII cruda, y Google Model Armor + Sensitive Data
 Protection Advanced como detector y redactor externo principal.
 
+La proyección para JEV se construye después de ese firewall: el texto
+desidentificado se etiqueta como contenido no confiable a clasificar y no puede
+llenar slots de instrucciones, criterios, autoridad, capability, catálogo o
+policy. El mismo tratamiento se aplica a memoria conversacional y contenido
+recuperado antes de cualquier JEV.
+
 ```text
 inspectTemplate
   → infoTypes predefinidos y custom
@@ -106,6 +112,9 @@ templates. Limitaciones de región, modalidad, tamaño o invocación producen
 - No enviar session state privado a Model Armor.
 - Verificar que streaming sensible no se habilita.
 - Registrar verdict y template version sin guardar valores detectados.
+- Probar que opinión, instrucción, autoridad, contenido recuperado y campos
+  fuera de schema no cambian autorización ni opciones permitidas de JEV; las
+  pruebas usan sólo fixtures sintéticos y registran métricas, no contenido.
 
 ## Referencias
 

@@ -1,0 +1,13 @@
+# Copy outside Git or use CI variables. Do not put secrets in this file.
+project_id              = "factored-hackathon"
+region                  = "us-central1"
+name_prefix             = "bankai"
+backend_image           = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/backend@sha256:REPLACE"
+pipeline_image          = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/pipeline@sha256:REPLACE"
+kg_artifact_bucket_name = "REPLACE-with-globally-unique-private-bucket"
+
+backend_environment = {
+  APP_ENV = "prod"
+}
+
+pipeline_environment = {}

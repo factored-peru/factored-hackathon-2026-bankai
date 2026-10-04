@@ -28,8 +28,8 @@ infraestructura futura y aún no contienen archivos `.tf` aplicables.
 | Renderizar Compose | `docker compose -f local/backend-compose.yml config` | Disponible; exige `SERVICE_TOKEN` en el entorno. |
 | Levantar backend y Valkey | `docker compose -f local/backend-compose.yml up --build` | Disponible; crea recursos locales y mantiene el proceso activo. |
 | Detener ciclo local | `docker compose -f local/backend-compose.yml down` | Disponible; no usar `-v` sin autorizar eliminar volúmenes. |
-| Inicializar Terraform | `terraform -chdir=terraform/environments/<entorno> init -backend=false` | Previsto, sólo tras incorporar archivos Terraform del entorno. |
-| Validar Terraform | `terraform -chdir=terraform/environments/<entorno> validate` | Previsto, sólo tras `init` y con configuración existente. |
+| Inicializar Terraform | `terraform -chdir=terraform/environments/dev init -backend=false` | Disponible para validar el contrato local; descarga providers pero no crea recursos. |
+| Validar Terraform | `terraform -chdir=terraform/environments/dev validate` | Disponible tras `init`; no crea recursos. |
 | Revisar cambios | `terraform -chdir=terraform/environments/<entorno> plan` | Previsto; necesita backend, variables y credenciales autorizadas. |
 
 `terraform apply`, destrucción de recursos, ejecución remota de jobs y cambios

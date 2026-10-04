@@ -20,6 +20,19 @@ El pipeline vive exclusivamente en `data-ingestion-and-processing/`, usa
 Python 3.12 y se ejecuta como Cloud Run Job. No sirve HTTP ni comparte runtime,
 imagen, sesión o credenciales con `app/backend/`.
 
+### Observación: bootstrap manual heredado
+
+Se conserva `scripts/bootstrap_csv_to_bigquery.py` porque existía en una rama
+de trabajo y documenta una vía útil para bootstrap local o inspección controlada
+de `CSV -> GCS -> BigQuery`. No es la implementación de esta decisión: por
+defecto sólo imprime un plan, pero su modo explícito `--execute` puede leer S3
+directamente, usar una carpeta local, escribir GCS y cargar BigQuery con
+`WRITE_TRUNCATE`. Esa ruta es no normativa, no se ejecuta automáticamente, no
+debe recibir datos bancarios en producción y requiere autorización explícita.
+La operación real debe pasar por el contrato administrado de este ADR y su
+existencia no autoriza acceso del backend a S3 ni reemplaza el ledger,
+`verified/`, validación de schema o idempotencia de la ingesta.
+
 Cada ejecución exige un `run-id` y sigue este orden:
 
 ```text
@@ -86,6 +99,12 @@ Cloud Scheduler (15 min; lookback 30 min)
 - `publish` permanece pendiente: validará schema, manifest y checksum,
   publicará `graph-vN.msgpack` y actualizará `current.json` sólo después de
   una publicación completa y verificable.
+- Mientras la infraestructura GCS y el lease Firestore estén pendientes,
+  `publish --local-target` sólo emula localmente el paquete inmutable y su
+  `current.json` para `demo-bankai`. No invoca AWS, GCS, BigQuery, Scheduler,
+  Eventarc ni Cloud Tasks. `TODO(adr-0020-cloud)`: el publicador productivo
+  sustituirá ese adaptador por GCS más lease sin cambiar el contrato de
+  manifiesto/checksum que consume KG-RAG.
 
 Tras una carga raw confirmada, `ingestion-worker` encola `pipeline-refresh`.
 El orquestador inicia el Cloud Run Job con un nuevo `run-id`; el job adquiere un

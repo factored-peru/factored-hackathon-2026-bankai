@@ -3,6 +3,7 @@ import type {
 	EvaluationRoute,
 	EvaluationStep,
 } from "../../src/services/evaluation/contracts.js";
+import { knowledgeGraphQuestionGoldens } from "./kg-question-goldens.js";
 
 type Overrides = Partial<
 	Omit<
@@ -84,6 +85,11 @@ export const evaluationGoldens: readonly EvaluationContext[] = [
 		"ood-safe-answer",
 	].map((id) =>
 		fixture(id, "ood", { resultVerified: id === "ood-safe-answer" }),
+	),
+	...knowledgeGraphQuestionGoldens.map((golden) =>
+		fixture(golden.fixtureId, "kg_rag", {
+			kgSelectionMatchesFixture: true,
+		}),
 	),
 	...[
 		"catalog-missing",

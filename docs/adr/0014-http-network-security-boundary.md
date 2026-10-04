@@ -22,7 +22,9 @@ backend verifica ID token, aplica CORS de orígenes explícitos, CSRF para sesi�
 basada en cookie, límites de tamaño y timeouts. Las dependencias autorizadas
 son Firebase Admin, BigQuery, GCS, Firestore, Memorystore for Valkey por red
 privada, Secret Manager, Model Armor, Vertex AI, JEV, Cloud Scheduler,
-Eventarc, Cloud Tasks y Cloud Run Functions.
+Eventarc, Cloud Tasks y Cloud Run Functions. Langfuse Cloud US se agrega sólo
+como egress HTTPS explícitamente allowlisted para telemetría saneada cuando se
+cumplan los prerequisitos de ADR 0010; no es accesible desde el navegador.
 
 No se realizan fetches arbitrarios ni se siguen URLs aportadas por usuario. El
 pipeline definido en ADR 0020 se ejecuta como Cloud Run Job separado y solo

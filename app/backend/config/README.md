@@ -49,6 +49,11 @@ decisión de negocio.
   Memorystore for Valkey. La conexión gestionada usa TLS, IAM y red privada.
 - `FIRESTORE_*`, `BIGQUERY_*`, `GCS_*` y `GOOGLE_*`: estado durable,
   Structured RAG, KG-RAG y recursos Google Cloud mediante ADC/IAM.
+- `KG_RAG_LOCAL_*`: adaptador de desarrollo para el paquete local publicado
+  por el pipeline. Requiere `KG_RAG_LOCAL_ENABLED=true`, conserva
+  `.local/kg-rag` como ruta por defecto y sólo acepta `demo-bankai`; el
+  runtime lo rechaza en `prod`. No habilita GCS ni conecta automáticamente el
+  chat demo al control plane.
 - `MODEL_ARMOR_*`, `SDP_*`, `VERTEX_AI_*` y `JEV_*`: proveedores del control
   plane, siempre detrás de un adaptador y una política de datos.
   Con `MODEL_ARMOR_ENABLED=true` son obligatorios `MODEL_ARMOR_PROJECT_ID`,

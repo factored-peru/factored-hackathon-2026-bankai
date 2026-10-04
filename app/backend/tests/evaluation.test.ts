@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { runEvaluationGoldenSet } from "../scripts/evaluate-goldens.js";
 import { BaseAgentEvaluator } from "../src/services/evaluation/base-agent-evaluator.js";
 import { EvaluationRunner } from "../src/services/evaluation/evaluation-runner.js";
 import { KnowledgeGraphRagEvaluator } from "../src/services/evaluation/knowledge-graph-rag-evaluator.js";
 import { StructuredRagEvaluator } from "../src/services/evaluation/structured-rag-evaluator.js";
 import { evaluationGoldens } from "./fixtures/evaluation-goldens.js";
+import { knowledgeGraphQuestionGoldens } from "./fixtures/kg-question-goldens.js";
 
 const safeStructuredRun = {
 	traceId: "trace-a",
@@ -64,8 +66,25 @@ describe("agent evaluators", () => {
 		]);
 	});
 
+	test("marks a divergent KG fixture selection as informational failure", () => {
+		const evaluations = new KnowledgeGraphRagEvaluator().evaluate({
+			...safeStructuredRun,
+			route: "kg_rag",
+			kgSelectionMatchesFixture: false,
+		});
+		expect(evaluations).toContainEqual(
+			expect.objectContaining({
+				metric: "kg_fixture_selection_matches",
+				passed: false,
+				label: "fail",
+				reasonCode: "kg_fixture_selection_mismatch",
+			}),
+		);
+	});
+
 	test("keeps the complete synthetic golden set informational", () => {
-		expect(evaluationGoldens).toHaveLength(48);
+		expect(evaluationGoldens).toHaveLength(53);
+		expect(knowledgeGraphQuestionGoldens).toHaveLength(5);
 		const runner = new EvaluationRunner(new BaseAgentEvaluator(), [
 			new StructuredRagEvaluator(),
 			new KnowledgeGraphRagEvaluator(),
@@ -77,9 +96,24 @@ describe("agent evaluators", () => {
 			expect(
 				report.results.filter((result) => result.evaluator === "base_agent"),
 			).toHaveLength(8);
+			const hasKgFixtureSelection =
+				golden.route === "kg_rag" &&
+				golden.kgSelectionMatchesFixture !== undefined;
 			expect(report.results).toHaveLength(
-				golden.route === "structured_rag" || golden.route === "kg_rag" ? 9 : 8,
+				golden.route === "structured_rag" || golden.route === "kg_rag"
+					? hasKgFixtureSelection
+						? 10
+						: 9
+					: 8,
 			);
+			if (hasKgFixtureSelection) {
+				expect(report.results).toContainEqual(
+					expect.objectContaining({
+						metric: "kg_fixture_selection_matches",
+						passed: true,
+					}),
+				);
+			}
 			expect(
 				report.results.every(
 					(result) =>
@@ -89,5 +123,18 @@ describe("agent evaluators", () => {
 				),
 			).toBe(true);
 		}
+	});
+
+	test("exports a content-free P0 report with 48 core and five KG extensions", () => {
+		const batch = runEvaluationGoldenSet();
+		expect(batch).toMatchObject({
+			matrixVersion: "p0-v1",
+			gate: "informational",
+			baseFixtureCount: 48,
+			additionalKgCaseFixtureCount: 5,
+			fixtureCount: 53,
+		});
+		expect(JSON.stringify(batch)).not.toContain("synthetic-");
+		expect(JSON.stringify(batch)).not.toContain("¿");
 	});
 });

@@ -70,61 +70,18 @@ bun run check-types
 bun run check
 ```
 
-| Objetivo | Comando | Efecto |
-| --- | --- | --- |
-| Desarrollo con recarga | `bun run dev` | Inicia el servidor vigilado; detener con `Ctrl+C`. |
-| Ejecución sin vigilancia | `bun run start` | Inicia el servidor con la configuración activa. |
-| Compilación | `bun run build` | Emite la compilación TypeScript de producción. |
-| Contrato | `bun run spec:check` | Verifica OpenAPI sin modificar fuentes. |
-| Calidad | `bun test`, `bun run check-types`, `bun run check` | Ejecuta pruebas, tipos y Biome de sólo comprobación. |
-| Matriz de agente | `bun run agent:matrix` | Ejecuta la simulación declarada para variantes del agente. |
-| Prueba local de Structured RAG | `bun run structured:try -- --question "..."` | El JEV (TypeSafe) elige la entrada del catálogo y Vertex AI lee los parámetros; muestra la selección y los valores ligados sin ejecutar nada en BigQuery. Con `--execute --customer <id>` corre la consulta real. Envía la pregunta a proveedores externos: solo texto sintético (ADR 0010). Requiere autorización explícita y credenciales. |
-| Dry run del catálogo | `bun run catalog:dry-run` | Pide a BigQuery el plan de cada consulta del catálogo y compara columnas, tipos y bytes; no lee filas. Alcanza la nube: requiere autorización explícita, `BIGQUERY_ENABLED=true` y credenciales ADC (`gcloud auth application-default login`). |
+| Objetivo                 | Comando                                            | Efecto                                                     |
+| ------------------------ | -------------------------------------------------- | ---------------------------------------------------------- |
+| Desarrollo con recarga   | `bun run dev`                                      | Inicia el servidor vigilado; detener con `Ctrl+C`.         |
+| Ejecución sin vigilancia | `bun run start`                                    | Inicia el servidor con la configuración activa.            |
+| Compilación              | `bun run build`                                    | Emite la compilación TypeScript de producción.             |
+| Contrato                 | `bun run spec:check`                               | Verifica OpenAPI sin modificar fuentes.                    |
+| Calidad                  | `bun test`, `bun run check-types`, `bun run check` | Ejecuta pruebas, tipos y Biome de sólo comprobación.       |
+| Matriz de agente         | `bun run agent:matrix`                             | Ejecuta la simulación declarada para variantes del agente. |
 
 `bun run format` modifica archivos y sólo se usa cuando una tarea autorice el
 formateo. Bun documenta los [scripts](https://bun.sh/docs/runtime) y las
 [pruebas](https://bun.sh/docs/test) como estas invocaciones.
-
-## Baseline comparativo sin control plane
-
-El backend contiene un chat LLM clásico para comparar posteriormente
-completitud, latencia, errores y exposición potencial contra el control plane.
-Se selecciona por proceso, nunca por HTTP o WebSocket:
-
-```bash
-cd app/backend
-CHAT_PIPELINE=baseline \
-BASELINE_CHAT_ENABLED=true \
-VERTEX_AI_ENABLED=true \
-VERTEX_AI_PROJECT_ID=factored-hackathon \
-VERTEX_AI_LOCATION=us-central1 \
-VERTEX_AI_MODEL=MODELO_APROBADO \
-BIGQUERY_ENABLED=true \
-GOOGLE_CLOUD_PROJECT=factored-hackathon \
-GOOGLE_CLOUD_LOCATION=us-central1 \
-BIGQUERY_DATASET=DATASET_APROBADO \
-DEMO_AUTH_ENABLED=true \
-DEMO_ACTOR_HMAC_KEY=VALOR_SECRETO_LOCAL \
-REALTIME_ENABLED=true \
-CORS_ALLOWED_ORIGINS=http://localhost:3001 \
-bun run dev
-```
-
-Requiere ADC/IAM válidas para Vertex y BigQuery. Mantiene el mismo contrato de
-conversación y streaming; el prompt incluye el DDL estático de las tablas de
-soporte y disputas del PDF del datathon. El modelo puede invocar nativamente
-`retrieve_context` hasta dos veces, sólo con uno de los tres `QueryPlan` del
-catálogo de ejemplo (`customer_products`, `product_status`,
-`recent_transactions`). El backend inyecta el cliente ligado al actor demo y
-conserva límites de filas, bytes y timeout del plan; el modelo no recibe SQL ni
-elige un cliente. Las filas recuperadas sí regresan al modelo: usa únicamente
-un dataset/actor de prueba aprobado, no información bancaria real.
-
-Por diseño no ejecuta privacidad, Model Armor, JEV, policy, filtrado por rol,
-proyección de evidencia ni el `StateGraph`; no es la ruta factual autorizada
-del producto. Sus métricas sin contenido permiten comparar completitud,
-latencia, fallos y posibles leaks contra el control plane. Para volver al modo
-local autocontenido, omite esas variables o usa `CHAT_PIPELINE=demo`.
 
 ## Demo local para frontend
 
@@ -141,13 +98,13 @@ con credenciales únicamente para `http://localhost:3001` y
 BigQuery, Firebase, Firestore, GCS, Valkey ni secretos. Todo estado se pierde al
 detener el proceso.
 
-| Recurso | URL | Uso demo |
-| --- | --- | --- |
-| Referencia HTTP | `GET /docs` | Scalar sobre el OpenAPI canónico. |
-| Contrato HTTP | `GET /openapi.json` | Endpoints, payloads, cookies y ejemplos. |
-| Contrato realtime | `GET /asyncapi.json` | Eventos del socket `GET /v1/realtime`. |
-| Aliases | `GET /v1/demo/actors` | `demo-customer-1` y `demo-backoffice-1`. |
-| Fixture | `GET /v1/demo/fixtures` | IDs sintéticos de transacción, disputa y caso. |
+| Recurso           | URL                     | Uso demo                                       |
+| ----------------- | ----------------------- | ---------------------------------------------- |
+| Referencia HTTP   | `GET /docs`             | Scalar sobre el OpenAPI canónico.              |
+| Contrato HTTP     | `GET /openapi.json`     | Endpoints, payloads, cookies y ejemplos.       |
+| Contrato realtime | `GET /asyncapi.json`    | Eventos del socket `GET /v1/realtime`.         |
+| Aliases           | `GET /v1/demo/actors`   | `demo-customer-1` y `demo-backoffice-1`.       |
+| Fixture           | `GET /v1/demo/fixtures` | IDs sintéticos de transacción, disputa y caso. |
 
 Flujo mínimo para el cliente: consulta aliases, crea sesión con
 `POST /v1/demo/sessions` y `{ "actorId": "demo-customer-1" }`, usa
@@ -157,13 +114,13 @@ orígenes permitidos para que el handshake WebSocket acepte la cookie.
 
 Los datos de prueba en memoria son deliberadamente sintéticos:
 
-| Endpoint | ID o payload de prueba |
-| --- | --- |
-| `GET /v1/transactions/{transactionId}` | `demo-transaction-1` |
-| `GET /v1/disputes/{disputeId}` | `demo-dispute-1` |
-| `GET /v1/dispute-cases/{caseId}` | `demo-case-1` |
-| `POST /v1/dispute-cases/demo-case-1/escalations` | `{ "reasonCode": "transaction_declined" }` como cliente. |
-| `POST /v1/approvals/{approvalId}/decisions` | `{ "decision": "approved" }` tras iniciar como `demo-backoffice-1`. |
+| Endpoint                                         | ID o payload de prueba                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------- |
+| `GET /v1/transactions/{transactionId}`           | `demo-transaction-1`                                                |
+| `GET /v1/disputes/{disputeId}`                   | `demo-dispute-1`                                                    |
+| `GET /v1/dispute-cases/{caseId}`                 | `demo-case-1`                                                       |
+| `POST /v1/dispute-cases/demo-case-1/escalations` | `{ "reasonCode": "transaction_declined" }` como cliente.            |
+| `POST /v1/approvals/{approvalId}/decisions`      | `{ "decision": "approved" }` tras iniciar como `demo-backoffice-1`. |
 
 Para enviar una conversación, envía por WebSocket un evento `chat.send` con un
 `clientMessageId`, texto y opcionalmente `attachmentIds`; el servidor emite

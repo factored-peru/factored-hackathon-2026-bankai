@@ -45,6 +45,13 @@ documenta este aislamiento. Las etapas implementadas son `kdd`, C1
 (`train-satisfaction-ordinal`), `compile-graph` y
 `evaluate-supervised-suite`; siempre requieren `--run-id`.
 
+La preparación dispone además de primitivas locales deterministas para
+deduplicación, imputación y lineage. La ejecución cloud de `prepare` permanece
+cerrada hasta que el worker de ADR 0020 entregue un objeto `verified/` y un
+ledger confirmado; su dry-run describe el contrato sin leer datos.
+El modelo completo está en
+[`docs/crisp-dm-kdd-operating-model.md`](docs/crisp-dm-kdd-operating-model.md).
+
 | Objetivo | Comando | Estado y efecto |
 | --- | --- | --- |
 | Validar contrato de CLI | `bankai-pipeline --stage prepare --run-id local-dry-run --dry-run` | Disponible; no debe tocar fuentes externas. |
@@ -61,8 +68,10 @@ bankai-pipeline --stage kdd --run-id kdd-local-20261003 --kdd-config /ruta/kdd.t
 La implementación compara Apriori y FP-Growth sobre transacciones y reclamos
 por separado. Su propuesta, límites y artefactos se documentan en
 `docs/kdd-dispute-transaction-support.md`. La etapa local `compile-graph`
-materializa solo las reglas coincidentes entre ambos algoritmos; no publica ni
-sirve el grafo.
+materializa sólo las reglas coincidentes entre ambos algoritmos y la ontología
+agregada `Population`, `Feature`, `FeatureValue`, `Target`, `Rule`, `Case` y
+`ModelRun`; no crea entidades individuales de cliente, cuenta, comercio o
+disputa.
 
 ```bash
 bankai-pipeline --stage compile-graph --run-id graph-local-20261003 \
@@ -70,8 +79,26 @@ bankai-pipeline --stage compile-graph --run-id graph-local-20261003 \
 ```
 
 Sin `--dry-run`, la etapa escribe `graph-v1.msgpack` y `graph-manifest.json`
-bajo `artifacts/graph/<run-id>/`. No crea `current.json`, no carga GCS y no
-habilita KG-RAG.
+bajo `artifacts/graph/<run-id>/`. Para adjuntar provenance agregado de C1–C5,
+añade `--supervised-suite-artifact-dir` y las cinco opciones
+`--cN-artifact-dir`; sus checksums deben coincidir con el suite manifest.
+
+## Publicación local para KG-RAG
+
+`publish` emula localmente el paquete inmutable y su `current.json` para
+`demo-bankai`; no usa AWS, GCS, BigQuery ni Cloud Tasks.
+
+```bash
+bankai-pipeline --stage publish --run-id graph-local-20261003 \
+  --graph-artifact-dir artifacts/graph/graph-local-20261003 \
+  --local-target ../app/backend/.local/kg-rag --dry-run
+bankai-pipeline --stage publish --run-id graph-local-20261003 \
+  --graph-artifact-dir artifacts/graph/graph-local-20261003 \
+  --local-target ../app/backend/.local/kg-rag
+```
+
+El paquete contiene el grafo, manifiesto, catálogo de operaciones y hashes.
+La publicación GCS y el lease Firestore siguen pendientes según ADR 0020.
 
 ## Piloto C1: incumplimiento de SLA
 

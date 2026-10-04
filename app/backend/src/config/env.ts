@@ -52,6 +52,10 @@ export const envSchema = z.object({
 	STRUCTURED_CATALOG_PATH: z.string().default("config/structured-catalog.json"),
 	GCS_ENABLED: envBoolean.default(false),
 	GCS_GRAPH_ARTIFACT_PREFIX: z.string().default("knowledge-graph/"),
+	/** Development-only file adapter; production must use the validated GCS publisher. */
+	KG_RAG_LOCAL_ENABLED: envBoolean.default(false),
+	KG_RAG_LOCAL_ARTIFACT_DIR: z.string().default(".local/kg-rag"),
+	KG_RAG_LOCAL_TENANT_ID: z.string().default("demo-bankai"),
 	CHAT_ENABLED: envBoolean.default(false),
 	/** Product chat is opt-in and cannot silently fall back to demo mode. */
 	AGENTIC_CHAT_ENABLED: envBoolean.default(false),
@@ -284,6 +288,17 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 
 	if (settings.DEMO_AUTH_ENABLED && settings.APP_ENV === "prod") {
 		throw new Error("SVC-CORE-9006: DEMO_AUTH_ENABLED is forbidden in prod");
+	}
+	if (settings.KG_RAG_LOCAL_ENABLED && settings.APP_ENV === "prod") {
+		throw new Error("SVC-CORE-9012: KG_RAG_LOCAL_ENABLED is forbidden in prod");
+	}
+	if (
+		settings.KG_RAG_LOCAL_ENABLED &&
+		settings.KG_RAG_LOCAL_TENANT_ID !== "demo-bankai"
+	) {
+		throw new Error(
+			"SVC-CORE-9013: KG_RAG_LOCAL_TENANT_ID must be demo-bankai",
+		);
 	}
 	if (
 		settings.DEMO_AUTH_ENABLED &&

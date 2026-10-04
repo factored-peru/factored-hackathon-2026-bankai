@@ -114,6 +114,12 @@ class GraphCompileTest(unittest.TestCase):
             self.assertEqual(payload["schema_version"], "bankai-kdd-graph-v1")
             rule_nodes = [node for node in payload["nodes"] if node["kind"] == "rule"]
             self.assertEqual(len(rule_nodes), 2)
+            case_nodes = [node for node in payload["nodes"] if node["kind"] == "case"]
+            self.assertEqual([node["attributes"]["case_id"] for node in case_nodes], ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"])
+            self.assertEqual(
+                next(node for node in case_nodes if node["attributes"]["case_id"] == "C6")["attributes"]["status"],
+                "blocked",
+            )
             direct_value_targets = [
                 edge
                 for edge in payload["edges"]

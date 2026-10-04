@@ -38,6 +38,10 @@ TRANSACTIONS = TableContract(
         FieldContract("transaction_id", True, ("STRING",)),
         FieldContract("customer_id", True, ("STRING",)),
         FieldContract("transaction_date", True, ("TIMESTAMP", "DATETIME")),
+        FieldContract("transaction_type", False, ("STRING",)),
+        FieldContract("transaction_category", False, ("STRING",)),
+        FieldContract("channel", False, ("STRING",)),
+        FieldContract("merchant_category", False, ("STRING",)),
         FieldContract("transaction_status", True, ("STRING",)),
         FieldContract("response_code", False, ("INTEGER", "INT64")),
         FieldContract("is_fraud", False, ("BOOLEAN",)),
@@ -57,16 +61,57 @@ COMPLAINTS = TableContract(
         FieldContract("complaint_id", True, ("STRING",)),
         FieldContract("customer_id", True, ("STRING",)),
         FieldContract("creation_date", True, ("TIMESTAMP", "DATETIME")),
+        FieldContract("case_type", False, ("STRING",)),
         FieldContract("status", True, ("STRING",)),
         FieldContract("priority", False, ("STRING",)),
         FieldContract("category", False, ("STRING",)),
+        FieldContract("subcategory", False, ("STRING",)),
+        FieldContract("reception_channel", False, ("STRING",)),
+        FieldContract("currency", False, ("STRING",)),
+        FieldContract("sla_breached", False, ("BOOLEAN",)),
+        FieldContract("is_repeat_complainer", False, ("BOOLEAN",)),
         FieldContract("claimed_amount", False, ("FLOAT", "FLOAT64", "NUMERIC", "INTEGER", "INT64")),
+        FieldContract("resolution_days", False, ("FLOAT", "FLOAT64", "NUMERIC", "INTEGER", "INT64")),
+    ),
+)
+
+CALL_CENTER_INTERACTIONS = TableContract(
+    name="call_center_interactions",
+    version="dispute-transaction-v1",
+    primary_key="interaction_id",
+    freshness_field="interaction_date",
+    source="bigquery_canonical",
+    fields=(
+        FieldContract("interaction_id", True, ("STRING",)),
+        FieldContract("customer_id", True, ("STRING",)),
+        FieldContract("interaction_date", True, ("TIMESTAMP", "DATETIME")),
+        FieldContract("reason_category", True, ("STRING",)),
+        FieldContract("interaction_type", False, ("STRING",)),
+        FieldContract("channel", False, ("STRING",)),
+        FieldContract("requires_followup", False, ("BOOLEAN",)),
+        FieldContract("was_escalated", False, ("BOOLEAN",)),
+    ),
+)
+
+SATISFACTION_SURVEYS = TableContract(
+    name="satisfaction_surveys",
+    version="dispute-transaction-v1",
+    primary_key="survey_id",
+    freshness_field="survey_date",
+    source="bigquery_canonical",
+    fields=(
+        FieldContract("survey_id", True, ("STRING",)),
+        FieldContract("interaction_id", True, ("STRING",)),
+        FieldContract("survey_date", True, ("TIMESTAMP", "DATETIME")),
+        FieldContract("main_score", True, ("INTEGER", "INT64")),
     ),
 )
 
 CONTRACTS: Mapping[str, TableContract] = {
     TRANSACTIONS.name: TRANSACTIONS,
     COMPLAINTS.name: COMPLAINTS,
+    CALL_CENTER_INTERACTIONS.name: CALL_CENTER_INTERACTIONS,
+    SATISFACTION_SURVEYS.name: SATISFACTION_SURVEYS,
 }
 
 

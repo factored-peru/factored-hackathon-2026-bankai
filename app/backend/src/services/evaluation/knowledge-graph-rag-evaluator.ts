@@ -15,7 +15,7 @@ export class KnowledgeGraphRagEvaluator implements RouteEvaluator {
 			context.catalogLoaded &&
 			context.catalogLoadedBeforeSpecializedJev &&
 			context.evidenceVersion !== null;
-		return [
+		const results: EvaluationResult[] = [
 			{
 				metric: "kg_catalog_before_jev_and_evidence",
 				score: passed ? 1 : 0,
@@ -27,5 +27,19 @@ export class KnowledgeGraphRagEvaluator implements RouteEvaluator {
 				mode: "deterministic",
 			},
 		];
+		if (context.kgSelectionMatchesFixture !== undefined) {
+			const matches = context.kgSelectionMatchesFixture;
+			results.push({
+				metric: "kg_fixture_selection_matches",
+				score: matches ? 1 : 0,
+				passed: matches,
+				label: matches ? "pass" : "fail",
+				reasonCode: matches ? null : "kg_fixture_selection_mismatch",
+				evaluator: this.name,
+				evaluatorVersion: this.version,
+				mode: "deterministic",
+			});
+		}
+		return results;
 	}
 }

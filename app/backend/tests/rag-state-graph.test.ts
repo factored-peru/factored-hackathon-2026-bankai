@@ -9,10 +9,13 @@ import {
 	ragThreadConfig,
 } from "../src/services/control-plane/rag-state-graph.js";
 import type { BaseRag } from "../src/services/retrieval/base-rag.js";
+import type { KnowledgeGraphRagExecutor } from "../src/services/retrieval/knowledge-graph-rag.js";
+import type { KnowledgeGraphSelection } from "../src/services/retrieval/knowledge-graph-selection.js";
 import type {
 	BaseRagCatalogRepository,
 	RagCatalogLoadResult,
 } from "../src/services/retrieval/rag-catalog.js";
+import { knowledgeGraphQuestionGoldens } from "./fixtures/kg-question-goldens.js";
 
 const session: SessionContext = {
 	sessionId: "session-a",
@@ -31,7 +34,27 @@ const session: SessionContext = {
 function catalog(kind: "structured" | "knowledge_graph"): RagCatalogLoadResult {
 	return {
 		status: "ready",
-		catalog: { kind, version: "v1", entries: [] },
+		catalog: {
+			kind,
+			version: "v1",
+			entries:
+				kind === "knowledge_graph"
+					? [
+							{
+								id: "kg.population.summary",
+								version: "v1",
+								allowedRoles: ["customer"],
+								parameters: [
+									{
+										name: "population",
+										type: "string",
+										allowedValues: ["transactions"],
+									},
+								],
+							},
+						]
+					: [],
+		},
 	};
 }
 
@@ -42,14 +65,90 @@ function repository(
 	return { kind, load: async () => result };
 }
 
-function rag(kind: "structured" | "knowledge_graph"): BaseRag {
+function rag(
+	kind: "structured" | "knowledge_graph",
+): BaseRag & KnowledgeGraphRagExecutor {
 	return {
 		kind,
 		execute: async () => ({ status: "ready", evidence: [] }),
+		executeSelection: async () => ({ status: "ready", evidence: [] }),
+	};
+}
+
+function caseQuestionCatalog(): RagCatalogLoadResult {
+	return {
+		status: "ready",
+		catalog: {
+			kind: "knowledge_graph",
+			version: "v1",
+			entries: [
+				{
+					id: "kg.case.summary",
+					version: "v1",
+					allowedRoles: ["customer"],
+					parameters: [
+						{
+							name: "case_id",
+							type: "string",
+							allowedValues: ["C1", "C2", "C3", "C4", "C5"],
+						},
+					],
+				},
+			],
+		},
 	};
 }
 
 describe("RAG StateGraph", () => {
+	test("routes every C1-C5 synthetic question through the closed KG case summary", async () => {
+		for (const golden of knowledgeGraphQuestionGoldens) {
+			const queries: string[] = [];
+			const selections: KnowledgeGraphSelection[] = [];
+			const graph = createRagStateGraph({
+				primaryJev: { assess: async () => "relations" },
+				structuredCatalog: repository("structured", catalog("structured")),
+				knowledgeGraphCatalog: repository(
+					"knowledge_graph",
+					caseQuestionCatalog(),
+				),
+				structuredJev: { assess: async () => true },
+				knowledgeGraphJev: {
+					select: async ({ query }) => {
+						queries.push(query);
+						return golden.expectedSelection;
+					},
+				},
+				structuredRag: rag("structured"),
+				knowledgeGraphRag: {
+					executeSelection: async ({ selection }) => {
+						selections.push(selection);
+						return { status: "ready", evidence: [] };
+					},
+				},
+			});
+
+			const result = await graph.invoke({
+				query: golden.question,
+				session,
+				traceId: `trace-${golden.fixtureId}`,
+				route: "llm",
+				catalog: null,
+				terminalReason: null,
+			});
+
+			expect(queries).toEqual([golden.question]);
+			expect(selections).toEqual([golden.expectedSelection]);
+			expect(result.knowledgeGraphSelection).toEqual(golden.expectedSelection);
+			expect(result.executionOrder).toEqual([
+				"primary_jev",
+				"kg_catalog",
+				"kg_jev",
+				"kg_rag",
+			]);
+			expect(result.terminalReason).toBeNull();
+		}
+	});
+
 	test("loads the KG catalog before its specialized Jev gate", async () => {
 		const graph = createRagStateGraph({
 			primaryJev: { assess: async () => "relations" },
@@ -59,7 +158,14 @@ describe("RAG StateGraph", () => {
 				catalog("knowledge_graph"),
 			),
 			structuredJev: { assess: async () => true },
-			knowledgeGraphJev: { assess: async () => true },
+			knowledgeGraphJev: {
+				select: async () => ({
+					decision: "select",
+					operationId: "kg.population.summary",
+					version: "v1",
+					parameters: { population: "transactions" },
+				}),
+			},
 			structuredRag: rag("structured"),
 			knowledgeGraphRag: rag("knowledge_graph"),
 		});
@@ -93,7 +199,7 @@ describe("RAG StateGraph", () => {
 				catalog("knowledge_graph"),
 			),
 			structuredJev: { assess: async () => true },
-			knowledgeGraphJev: { assess: async () => true },
+			knowledgeGraphJev: { select: async () => ({ decision: "deny" }) },
 			structuredRag: rag("structured"),
 			knowledgeGraphRag: rag("knowledge_graph"),
 		});
@@ -134,7 +240,7 @@ describe("RAG StateGraph thread memory", () => {
 				catalog("knowledge_graph"),
 			),
 			structuredJev: { assess: async () => true },
-			knowledgeGraphJev: { assess: async () => true },
+			knowledgeGraphJev: { select: async () => ({ decision: "deny" }) },
 			structuredRag: rag("structured"),
 			knowledgeGraphRag: rag("knowledge_graph"),
 			checkpointer: createInMemoryCheckpointer(),
@@ -188,7 +294,7 @@ describe("RAG StateGraph thread memory", () => {
 				catalog("knowledge_graph"),
 			),
 			structuredJev: { assess: async () => true },
-			knowledgeGraphJev: { assess: async () => true },
+			knowledgeGraphJev: { select: async () => ({ decision: "deny" }) },
 			structuredRag: rag("structured"),
 			knowledgeGraphRag: rag("knowledge_graph"),
 			checkpointer: createInMemoryCheckpointer(),

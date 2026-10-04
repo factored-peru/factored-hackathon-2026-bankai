@@ -4,6 +4,13 @@
 
 Accepted
 
+## Evolución
+
+La decisión incorpora la evaluación de robustez de JevAdvBench: una salida
+tipada no vuelve confiable al contenido que alimenta la decisión. Los textos de
+usuario, la memoria conversacional y cualquier recuperación se tratan como
+estado no confiable, aun cuando hayan pasado una validación estructural.
+
 ## Context
 
 Dispute Transaction Support combina conversación, evidencia estructurada de
@@ -27,6 +34,13 @@ sesión -> normalización/privacidad -> Model Armor -> JEV primario
   capacidades. El prompt nunca aporta esa autoridad.
 - El JEV primario solo elige `llm`, `database`, `relations` u `ood`; no
   autoriza ni ejecuta. Ambigüedad o baja confianza pasan a policy y aclaración.
+- Antes de todo JEV, el backend construye una proyección de decisión tipada y
+  mínima: identidad, tenant, rol, capacidades, clasificación de riesgo y las
+  claves de catálogo provienen de código o sesión autenticada. El texto de
+  usuario desidentificado sólo se presenta como dato a clasificar; no puede
+  añadir instrucciones, criterio, autoridad, opciones, permisos ni hechos de
+  caso. Memoria y contenido recuperado no se usan como estado para decidir
+  rutas o autorizaciones.
 - El Policy Engine permite, aclara, rechaza o escala. Las transiciones de caso
   y HITL se guardan en Firestore; SessionManager usa Memorystore for Valkey
   solo para estado efímero.
@@ -41,6 +55,11 @@ sesión -> normalización/privacidad -> Model Armor -> JEV primario
 - El primer flujo operativo sólo consulta evidencia autorizada y solicita un
   escalamiento mock sujeto a aprobación de operador. Presentar, cancelar o
   modificar una disputa bancaria es una capacidad DENY y no tiene herramienta.
+- Las pruebas de JEV comparan cada decisión con una ejecución limpia y un
+  rerun idéntico. Las variantes de una sola edición para rewording, opinión,
+  instrucción, autoridad, contenido indirecto y estructura sólo usan fixtures
+  sintéticos. El proveedor real es opt-in para ejecución manual o nocturna;
+  nunca forma parte de un PR ni autoriza una acción.
 
 El baseline comparativo `CHAT_PIPELINE=baseline` está fuera de este control
 plane, no lo sustituye ni cambia su secuencia normativa. Es un

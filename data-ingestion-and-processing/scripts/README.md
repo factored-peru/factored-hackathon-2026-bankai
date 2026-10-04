@@ -13,7 +13,12 @@ publicar artefactos consumibles por el backend.
 `kdd` requiere `--kdd-config`; su configuración de ejemplo está en
 `../config/kdd.toml.example` y no invoca `compile-graph` ni `publish`.
 
-No existe bootstrap directo S3→GCS→BigQuery. `transfer` y `load` sólo se
-habilitarán mediante el contrato administrado de ADR 0020: Storage Transfer
-Service, evento GCS, validación/copia inmutable a `verified/`, Cloud Task OIDC,
-ledger idempotente y carga BigQuery sin truncar tablas raw.
+El archivo `bootstrap_csv_to_bigquery.py` se conserva como utilidad manual
+histórica para inspección o bootstrap controlado. Por defecto hace `dry-run` y
+no toca AWS, GCS ni BigQuery. Su modo `--execute` no forma parte del pipeline
+normativo: puede leer S3 directamente, usar una copia local, escribir GCS y
+cargar BigQuery con `WRITE_TRUNCATE`. Por tanto no debe usarse para producción,
+reintentos ADR 0020 ni datos bancarios sin autorización explícita. La ruta
+administrada de `transfer` y `load` sigue siendo obligatoria para operación
+real: Storage Transfer Service, evento GCS, copia inmutable a `verified/`,
+Cloud Task OIDC, ledger idempotente y carga BigQuery sin truncar tablas raw.

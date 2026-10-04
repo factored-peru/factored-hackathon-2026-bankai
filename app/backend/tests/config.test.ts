@@ -289,4 +289,25 @@ port = 9001
 			"SVC-CORE-9004",
 		);
 	});
+
+	test("local KG artifacts are opt-in, demo-tenant-only, and forbidden in prod", () => {
+		expect(envSchema.parse({}).KG_RAG_LOCAL_ENABLED).toBe(false);
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					APP_ENV: "prod",
+					SERVICE_TOKEN: "service-token",
+					KG_RAG_LOCAL_ENABLED: true,
+				}),
+			),
+		).toThrow("SVC-CORE-9012");
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					KG_RAG_LOCAL_ENABLED: true,
+					KG_RAG_LOCAL_TENANT_ID: "foreign",
+				}),
+			),
+		).toThrow("SVC-CORE-9013");
+	});
 });

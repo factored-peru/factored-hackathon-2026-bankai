@@ -15,6 +15,7 @@ from typing import Any
 import msgpack
 
 from bankai_pipeline.kdd import RUN_ID, PopulationDefinition, population_definitions
+from bankai_pipeline.kg_cases import CASE_CATALOG_VERSION, KgCaseDefinition, case_definitions
 
 
 GRAPH_SCHEMA_VERSION = "bankai-kdd-graph-v1"
@@ -233,6 +234,141 @@ class KddGraphCompiler:
         )
 
 
+class KgCaseGraphAugmenter:
+    """Attach only approved aggregate cases and experiment provenance.
+
+    A case is not a customer case or a dispute record.  It is the analytical
+    definition C1--C8 used to explain the limits of the graph artifact.
+    """
+
+    def augment(
+        self,
+        graph: CompiledGraph,
+        supervised_suite_dir: Path | None = None,
+        case_artifact_dirs: Mapping[str, Path] | None = None,
+    ) -> CompiledGraph:
+        nodes = {node.identifier: node for node in graph.nodes}
+        edges = {(edge.source, edge.target, edge.relation): edge for edge in graph.edges}
+
+        def add_node(identifier: str, kind: str, **attributes: object) -> None:
+            node = GraphNode(identifier, kind, dict(sorted(attributes.items())))
+            existing = nodes.get(identifier)
+            if existing is not None and existing != node:
+                raise GraphInputError(f"conflicting graph node: {identifier}")
+            nodes[identifier] = node
+
+        def add_edge(source: str, target: str, relation: str, **attributes: object) -> None:
+            key = (source, target, relation)
+            edge = GraphEdge(source, target, relation, dict(sorted(attributes.items())))
+            existing = edges.get(key)
+            if existing is not None and existing != edge:
+                raise GraphInputError(f"conflicting graph edge: {key}")
+            edges[key] = edge
+
+        definitions = case_definitions()
+        for definition in definitions:
+            case_id = f"case:{definition.identifier}"
+            add_node(
+                case_id,
+                "case",
+                case_id=definition.identifier,
+                target=definition.target,
+                predictors=list(definition.predictors),
+                status=definition.status,
+                limitation=definition.limitation,
+            )
+            if definition.population is not None:
+                population_id = f"population:{definition.population}"
+                if population_id not in nodes:
+                    add_node(
+                        population_id,
+                        "population",
+                        name=definition.population,
+                        target=definition.target,
+                    )
+                add_edge(case_id, population_id, "applies_to")
+
+        suite_source: dict[str, object] = {"included": False}
+        if supervised_suite_dir is not None or case_artifact_dirs is not None:
+            if supervised_suite_dir is None or case_artifact_dirs is None:
+                raise GraphInputError("supervised suite and all case artifact directories are required together")
+            self._add_model_runs(nodes, edges, definitions, supervised_suite_dir, case_artifact_dirs)
+            suite_source = {
+                "included": True,
+                "manifest_sha256": _sha256_file(
+                    supervised_suite_dir / "supervised-suite-manifest.json"
+                ),
+            }
+
+        ordered_nodes = tuple(nodes[key] for key in sorted(nodes))
+        ordered_edges = tuple(edges[key] for key in sorted(edges))
+        _assert_dag(ordered_nodes, ordered_edges)
+        source = dict(graph.source)
+        source["case_catalog_version"] = CASE_CATALOG_VERSION
+        source["supervised_suite"] = suite_source
+        return CompiledGraph(source=source, nodes=ordered_nodes, edges=ordered_edges)
+
+    def _add_model_runs(
+        self,
+        nodes: dict[str, GraphNode],
+        edges: dict[tuple[str, str, str], GraphEdge],
+        definitions: tuple[KgCaseDefinition, ...],
+        suite_dir: Path,
+        case_dirs: Mapping[str, Path],
+    ) -> None:
+        suite_path = suite_dir / "supervised-suite-manifest.json"
+        suite = _read_json_object(suite_path)
+        if suite.get("schema_version") != "bankai-supervised-suite-v1":
+            raise GraphInputError("unsupported supervised suite version")
+        suite_cases = suite.get("cases")
+        if not isinstance(suite_cases, Mapping):
+            raise GraphInputError("supervised suite cases are invalid")
+        expected = {definition.identifier for definition in definitions if definition.identifier <= "C5"}
+        if set(case_dirs) != expected or set(suite_cases) != expected:
+            raise GraphInputError("supervised suite must contain exactly C1 through C5")
+        manifest_names = {case: f"{case.lower()}-manifest.json" for case in expected}
+        definition_by_id = {definition.identifier: definition for definition in definitions}
+        for case in sorted(expected):
+            path = case_dirs[case] / manifest_names[case]
+            manifest = _read_json_object(path)
+            suite_case = suite_cases.get(case)
+            if not isinstance(suite_case, Mapping):
+                raise GraphInputError(f"supervised suite case is invalid: {case}")
+            if suite_case.get("sha256") != _sha256_file(path):
+                raise GraphInputError(f"supervised suite checksum mismatch: {case}")
+            if manifest.get("case") != case or manifest.get("publication") != "not_requested":
+                raise GraphInputError(f"invalid supervised case manifest: {case}")
+            run_id = _require_string(manifest, "run_id")
+            schema_version = _require_string(manifest, "schema_version")
+            # C2 reports quantile evaluation rather than a classifier metric;
+            # both shapes are aggregate and are normalized into ModelRun.
+            metrics = manifest.get("metrics", manifest.get("evaluation"))
+            if not isinstance(metrics, Mapping):
+                raise GraphInputError(f"supervised case metrics are invalid: {case}")
+            model_id = f"model_run:{case}:{run_id}"
+            model = GraphNode(
+                model_id,
+                "model_run",
+                {
+                    "case_id": case,
+                    "run_id": run_id,
+                    "schema_version": schema_version,
+                    "manifest_sha256": _sha256_file(path),
+                    "target": manifest.get("target", definition_by_id[case].target),
+                    "metrics": _safe_metrics(metrics),
+                    "status": "exploratory_not_promoted",
+                },
+            )
+            if model_id in nodes and nodes[model_id] != model:
+                raise GraphInputError(f"conflicting graph node: {model_id}")
+            nodes[model_id] = model
+            edge = GraphEdge(f"case:{case}", model_id, "evaluated_by", {})
+            key = (edge.source, edge.target, edge.relation)
+            if key in edges and edges[key] != edge:
+                raise GraphInputError(f"conflicting graph edge: {key}")
+            edges[key] = edge
+
+
 class GraphArtifactWriter:
     """Write deterministic local artifacts; publication is intentionally separate."""
 
@@ -258,19 +394,33 @@ class GraphArtifactWriter:
         return manifest
 
 
-def compile_graph(kdd_artifact_dir: Path, output_dir: Path, run_id: str) -> dict[str, object]:
+def compile_graph(
+    kdd_artifact_dir: Path,
+    output_dir: Path,
+    run_id: str,
+    supervised_suite_dir: Path | None = None,
+    case_artifact_dirs: Mapping[str, Path] | None = None,
+) -> dict[str, object]:
     artifacts = KddArtifactReader().load(kdd_artifact_dir)
     rules = KddConsensusValidator().collect(artifacts)
     graph = KddGraphCompiler().compile(artifacts, rules)
+    graph = KgCaseGraphAugmenter().augment(graph, supervised_suite_dir, case_artifact_dirs)
     return GraphArtifactWriter().write(output_dir, run_id, graph)
 
 
-def graph_dry_run_plan(kdd_artifact_dir: Path, output_dir: Path, run_id: str) -> dict[str, object]:
+def graph_dry_run_plan(
+    kdd_artifact_dir: Path,
+    output_dir: Path,
+    run_id: str,
+    supervised_suite_dir: Path | None = None,
+    case_artifact_dirs: Mapping[str, Path] | None = None,
+) -> dict[str, object]:
     if not RUN_ID.fullmatch(run_id):
         raise GraphInputError("run_id must be opaque and match the allowed format")
     artifacts = KddArtifactReader().load(kdd_artifact_dir)
     rules = KddConsensusValidator().collect(artifacts)
     graph = KddGraphCompiler().compile(artifacts, rules)
+    graph = KgCaseGraphAugmenter().augment(graph, supervised_suite_dir, case_artifact_dirs)
     return {
         "schema_version": GRAPH_SCHEMA_VERSION,
         "run_id": run_id,
@@ -281,6 +431,20 @@ def graph_dry_run_plan(kdd_artifact_dir: Path, output_dir: Path, run_id: str) ->
         "output": str(output_dir / run_id / GRAPH_FILENAME),
         "publication": "not_requested",
     }
+
+
+def _safe_metrics(value: object) -> object:
+    """Keep numeric aggregate metrics and their labels, never lineage or rows."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [_safe_metrics(item) for item in value]
+    if isinstance(value, Mapping):
+        blocked = {"job_id", "query_hash", "table", "lineage", "rows", "records"}
+        if any(not isinstance(key, str) or key in blocked for key in value):
+            raise GraphInputError("supervised metrics contain a prohibited field")
+        return {key: _safe_metrics(item) for key, item in sorted(value.items())}
+    raise GraphInputError("supervised metrics contain an unsupported value")
 
 
 def _catalog_for(result: Mapping[str, object], definition: PopulationDefinition) -> tuple[str, ...]:

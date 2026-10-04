@@ -165,6 +165,7 @@ directas `feature_value → target` que presentarían una asociación como hecho
 
 El resultado local es `artifacts/graph/<run-id>/graph-v1.msgpack` y su
 `graph-manifest.json`, ambos reproducibles y sin PII, texto, IDs o filas. No
-publica GCS, no actualiza `current.json`, no genera catálogo KG-RAG y no llama
-al backend; esas responsabilidades siguen pendientes de una ADR e
-implementación posteriores.
+publica GCS ni llama al backend. La etapa separada `publish --local-target`
+emula para el tenant `demo-bankai` un paquete inmutable, su catálogo KG-RAG y
+`current.json`; GCS, el lease Firestore y la publicación productiva siguen
+pendientes de ADR 0020.
