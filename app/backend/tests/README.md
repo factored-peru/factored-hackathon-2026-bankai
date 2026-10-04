@@ -32,3 +32,5 @@ Pruebas con `bun test`.
   conserva una traza segura para automatización.
 - `tests/agent-matrix.test.ts`: valida la salida vertical y que JSON no exponga
   prompt, PII ni handles completos.
+- `tests/baseline-chat.test.ts`: comprueba el ciclo function-calling del
+  baseline, sus dos intentos máximos, streaming y mediciones sin contenido.

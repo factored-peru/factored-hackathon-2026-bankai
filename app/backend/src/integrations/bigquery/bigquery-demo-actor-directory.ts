@@ -62,6 +62,16 @@ export class BigQueryDemoActorDirectory implements DemoActorDirectory {
 			: null;
 	}
 
+	/** Server-only alias resolution; no customer ID crosses the HTTP boundary. */
+	async customerIdForActor(actorId: string): Promise<string | null> {
+		if (actorId === "demo-backoffice-1") return null;
+		return (
+			(await this.customers()).find(
+				(customerId) => this.actorId(customerId) === actorId,
+			) ?? null
+		);
+	}
+
 	private async customers(): Promise<string[]> {
 		const query = `
 SELECT customer_id

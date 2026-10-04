@@ -137,7 +137,6 @@ export class ConversationService {
 		try {
 			await emitState("normalizing");
 			await emitState("deciding");
-			await emitState("generating");
 			let streamed = "";
 			const result = await this.runner({
 				session,
@@ -151,6 +150,7 @@ export class ConversationService {
 						value,
 					});
 				},
+				onState: emitState,
 			});
 			const completedAt = this.now().toISOString();
 			const response = result.response || streamed;

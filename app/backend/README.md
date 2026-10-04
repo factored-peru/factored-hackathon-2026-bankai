@@ -85,6 +85,47 @@ bun run check
 formateo. Bun documenta los [scripts](https://bun.sh/docs/runtime) y las
 [pruebas](https://bun.sh/docs/test) como estas invocaciones.
 
+## Baseline comparativo sin control plane
+
+El backend contiene un chat LLM clásico para comparar posteriormente
+completitud, latencia, errores y exposición potencial contra el control plane.
+Se selecciona por proceso, nunca por HTTP o WebSocket:
+
+```bash
+cd app/backend
+CHAT_PIPELINE=baseline \
+BASELINE_CHAT_ENABLED=true \
+VERTEX_AI_ENABLED=true \
+VERTEX_AI_PROJECT_ID=factored-hackathon \
+VERTEX_AI_LOCATION=us-central1 \
+VERTEX_AI_MODEL=MODELO_APROBADO \
+BIGQUERY_ENABLED=true \
+GOOGLE_CLOUD_PROJECT=factored-hackathon \
+GOOGLE_CLOUD_LOCATION=us-central1 \
+BIGQUERY_DATASET=DATASET_APROBADO \
+DEMO_AUTH_ENABLED=true \
+DEMO_ACTOR_HMAC_KEY=VALOR_SECRETO_LOCAL \
+REALTIME_ENABLED=true \
+CORS_ALLOWED_ORIGINS=http://localhost:3001 \
+bun run dev
+```
+
+Requiere ADC/IAM válidas para Vertex y BigQuery. Mantiene el mismo contrato de
+conversación y streaming; el prompt incluye el DDL estático de las tablas de
+soporte y disputas del PDF del datathon. El modelo puede invocar nativamente
+`retrieve_context` hasta dos veces, sólo con uno de los tres `QueryPlan` del
+catálogo de ejemplo (`customer_products`, `product_status`,
+`recent_transactions`). El backend inyecta el cliente ligado al actor demo y
+conserva límites de filas, bytes y timeout del plan; el modelo no recibe SQL ni
+elige un cliente. Las filas recuperadas sí regresan al modelo: usa únicamente
+un dataset/actor de prueba aprobado, no información bancaria real.
+
+Por diseño no ejecuta privacidad, Model Armor, JEV, policy, filtrado por rol,
+proyección de evidencia ni el `StateGraph`; no es la ruta factual autorizada
+del producto. Sus métricas sin contenido permiten comparar completitud,
+latencia, fallos y posibles leaks contra el control plane. Para volver al modo
+local autocontenido, omite esas variables o usa `CHAT_PIPELINE=demo`.
+
 ## Demo local para frontend
 
 Desde un clon nuevo, inicia sólo el backend:

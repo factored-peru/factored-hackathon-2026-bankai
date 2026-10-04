@@ -55,6 +55,19 @@ export const envSchema = z.object({
 	CHAT_ENABLED: envBoolean.default(false),
 	/** Product chat is opt-in and cannot silently fall back to demo mode. */
 	AGENTIC_CHAT_ENABLED: envBoolean.default(false),
+	/** Process-selected runner; the browser never chooses the pipeline. */
+	CHAT_PIPELINE: z.enum(["demo", "baseline"]).default("demo"),
+	/** Explicit opt-in for the deliberately ungated comparative baseline. */
+	BASELINE_CHAT_ENABLED: envBoolean.default(false),
+	BASELINE_QUERY_CATALOG_PATH: z
+		.string()
+		.default("config/structured-catalog.example.json"),
+	BASELINE_MAX_RETRIEVAL_ATTEMPTS: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(2)
+		.default(2),
 	REALTIME_ENABLED: envBoolean.default(false),
 	DEMO_AUTH_ENABLED: envBoolean.default(false),
 	DEMO_ACTOR_HMAC_KEY: z.string().default(""),
@@ -307,6 +320,26 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		if (missing.length > 0) {
 			throw new Error(
 				`SVC-CORE-9010: AGENTIC_CHAT_ENABLED requires ${missing.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.CHAT_PIPELINE === "baseline") {
+		const missing = [
+			["BASELINE_CHAT_ENABLED", settings.BASELINE_CHAT_ENABLED],
+			["VERTEX_AI_ENABLED", settings.VERTEX_AI_ENABLED],
+			["BIGQUERY_ENABLED", settings.BIGQUERY_ENABLED],
+			["DEMO_AUTH_ENABLED", settings.DEMO_AUTH_ENABLED],
+			["REALTIME_ENABLED", settings.REALTIME_ENABLED],
+		]
+			.filter(([, enabled]) => !enabled)
+			.map(([name]) => name);
+		if (settings.AGENTIC_CHAT_ENABLED) {
+			missing.push("AGENTIC_CHAT_ENABLED=false");
+		}
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9011: CHAT_PIPELINE=baseline requires ${missing.join(", ")}`,
 			);
 		}
 	}

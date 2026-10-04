@@ -21,6 +21,13 @@ tabla ni filtros arbitrarios desde el prompt o navegador. Las tablas raw,
 curadas y auxiliares las publica exclusivamente el pipeline Python. Los logs
 solo guardan métricas, identificadores saneados y provenance.
 
+El comparador `baseline` reutiliza exclusivamente la mecánica local de un
+`QueryPlan` revisado: binding de cliente derivado de sesión y límites de bytes,
+filas y tiempo. No usa selector JEV, filtro de rol, policy ni `EvidenceDTO`; sus
+filas se entregan al modelo para medir el coste de omitir esas compuertas. No es
+una excepción de autorización y queda limitado a actores/datos experimentales
+aprobados.
+
 ## Consequences
 
 Las respuestas factuales sobre transacciones y disputas usan consultas exactas

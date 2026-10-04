@@ -59,6 +59,16 @@ conserva resultados versionados cuando exista su adaptador, bajo la frontera de
 ADR 0012. No se instala ni levanta Docker de evaluación, ni se instalan o
 configuran LangSmith, DeepEval, Promptfoo, AgentEvals o DeepAgents en P0.
 
+El comparador `baseline` se evalúa como trayectoria `llm` separada. No se le
+aplican los criterios de aprobación del control plane: su evaluador determina
+que las compuertas fueron omitidas, que la llamada terminó y que se registró
+duración e intentos/éxitos de recuperación. `BaselineRunMeasurement` y los campos opcionales de
+`EvaluationContext` guardan sólo pipeline, duración, conteo de llamadas,
+resultado/error allowlisted y banderas de compuertas; nunca contenido. La
+comparación posterior puede medir completitud, tiempo, fallos y leaks sobre
+fixtures sintéticos mediante evaluadores/judges aprobados, sin convertir al
+baseline en una vía de release ni de acceso a datos.
+
 | Referencia | Patrón adoptado | Exclusión P0 |
 | --- | --- | --- |
 | OpenTelemetry | spans y atributos de métricas de baja cardinalidad | contenido o exportador de contenido |

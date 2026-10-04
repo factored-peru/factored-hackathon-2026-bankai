@@ -1,6 +1,6 @@
-Sí. Basándome en el análisis de BigQuery, **yo no intentaría hacer todavía inferencia probabilística amplia para todo “Card Support Service”**. Los datos sí alcanzan para una capa probabilística, pero el problema debe acotarse. El mejor candidato es **Transaction Issue / Transaction Dispute Triage**, especialmente alrededor de rechazo, fraude, reversa, operación pendiente y escalamiento.
+Sí. Basándome en el análisis de BigQuery, **no intentaría ampliar todavía la inferencia probabilística de Dispute Transaction Support hacia todo el soporte general de tarjetas**. Los datos sí alcanzan para una capa probabilística, pero el problema debe acotarse. El mejor candidato es **Transaction Issue / Transaction Dispute Triage**, especialmente alrededor de rechazo, fraude, reversa, operación pendiente y escalamiento.
 
-El motivo principal es que para Card Support general tienes bastante información operacional de tarjetas, pero muy poca evidencia etiquetada de soporte. Hay 100,102 tarjetas de crédito y 39,938 de débito, y las transacciones contienen `transaction_status`, `response_code`, `is_fraud`, `fraud_score`, canal, monto y ubicación. Eso da una base estadística bastante rica. {0"}
+El motivo principal es que para ampliar hacia soporte general de tarjetas hay bastante información operacional, pero muy poca evidencia etiquetada de soporte. Hay 100,102 tarjetas de crédito y 39,938 de débito, y las transacciones contienen `transaction_status`, `response_code`, `is_fraud`, `fraud_score`, canal, monto y ubicación. Eso da una base estadística bastante rica. {0"}
 
 En cambio, cuando buscas datos que representen realmente **“qué problema tenía el cliente y cómo se resolvió”**, la cobertura cae mucho: solo 1,223 interacciones mencionan explícitamente IDs de tarjeta; únicamente 322 tienen transcript, y esos transcripts prácticamente tienen una sola intención dominante, `consulta_general`. El propio análisis concluye que esto no alcanza para entrenar bien intenciones como pérdida/robo, bloqueo, activación, PIN, compra desconocida, retiro no reconocido, rechazo o reemplazo. {1"}
 
@@ -24,7 +24,7 @@ y puedes aprender:
 P(feature\mid archetype)
 \]
 
-Para Card Support general necesitarías algo como:
+Para soporte general de tarjetas necesitarías algo como:
 
 ```text
 transaction_status
@@ -48,7 +48,7 @@ resolution_action
 
 Pero **esas dos variables target no están suficientemente construidas en tus datos actuales**.
 
-Tu propio análisis incluso propone crear una tabla `card_support_cases` con `customer_id`, `product_id`, `transaction_id`, `intent`, `issue_type`, `action_taken`, `resolution_code`, `escalated`, `verified_identity` y `outcome`. Esa recomendación existe precisamente porque hoy falta esa capa supervisada. {2"}
+Tu propio análisis incluso propone crear una tabla `dispute_transaction_cases` con `customer_id`, `product_id`, `transaction_id`, `intent`, `issue_type`, `action_taken`, `resolution_code`, `escalated`, `verified_identity` y `outcome`. Esa recomendación existe precisamente porque hoy falta esa capa supervisada. {2"}
 
 ---
 
@@ -60,8 +60,8 @@ Así que yo distinguiría:
 
 | Caso                                | Datos actuales                                     | Viabilidad de inferencia |
 | ----------------------------------- | --------------------------------------------------:| ------------------------ |
-| Intent general de Card Support      | 322 transcripts útiles                             | **Baja**                 |
-| Resolución completa de Card Support | Outcomes incompletos                               | **Baja**                 |
+| Intent de soporte general de tarjetas      | 322 transcripts útiles                             | **Baja**                 |
+| Resolución completa de soporte general de tarjetas | Outcomes incompletos                               | **Baja**                 |
 | Estado/razón de una transacción     | >1 M transacciones estructuradas                   | **Alta**                 |
 | Fraude/riesgo transaccional         | `is_fraud`, `fraud_score`, monto, canal, ubicación | **Alta / media-alta**    |
 | Triage de reclamos/disputes         | 15,486 reclamos                                    | **Media-alta**           |
@@ -211,7 +211,7 @@ Y a eso puedes sumar `response_code`, fraude, canal, monto y contexto de la tarj
 Separaría dos niveles:
 
 ```text
-CARD SUPPORT SERVICE
+DISPUTE TRANSACTION SUPPORT
         │
         ├── Deterministic tools
         │      estado tarjeta
@@ -234,12 +234,12 @@ Esto además coincide con el análisis previo: el dataset fue evaluado como **al
 
 ### Conclusión
 
-**Para Card Support genérico no tienes hoy suficientes datos etiquetados para hacer una inferencia estadística tan sólida como la de tu modelo de arquetipos.**
+**Para ampliar Dispute Transaction Support hacia soporte general de tarjetas no tienes hoy suficientes datos etiquetados para hacer una inferencia estadística tan sólida como la de tu modelo de arquetipos.**
 
 **Para la parte transaccional sí.** Tienes suficiente volumen y features estructurados para construir un modelo probabilístico interpretable alrededor de **transaction issue/dispute triage, rechazo y fraude**.
 
 Mi foco sería:
 
-> **Card Support Service como producto → deterministic tools + ML probabilístico especializado en Transaction Issue / Dispute Triage.**
+> **Dispute Transaction Support → deterministic tools + ML probabilístico especializado en Transaction Issue / Dispute Triage.**
 
-No convertiría todo Card Support en ML. La capa probabilística la pondría donde los datos realmente la justifican: **transacciones**.
+No convertiría el soporte general de tarjetas en ML. La capa probabilística la pondría donde los datos realmente la justifican: **transacciones**.

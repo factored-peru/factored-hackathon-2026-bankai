@@ -4,6 +4,7 @@ import type { ConversationRunner } from "../ports/conversation.js";
 export const deterministicConversationRunner: ConversationRunner = async (
 	input,
 ) => {
+	await input.onState?.("generating");
 	const response =
 		input.message.trim().length === 0
 			? "Recibí tus adjuntos. Un operador los revisará antes de usarlos como evidencia."

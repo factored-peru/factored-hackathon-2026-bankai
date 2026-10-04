@@ -20,7 +20,7 @@
   colorlinks=true,
   linkcolor=navy,
   urlcolor=navy,
-  pdftitle={Análisis de viabilidad: Knowledge Graph para Card Support},
+  pdftitle={Análisis de viabilidad: Knowledge Graph para Dispute Transaction Support},
   pdfauthor={Factored Hackathon 2026}
 }
 
@@ -40,7 +40,7 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{6pt}
 
-\title{\textcolor{navy}{Análisis de viabilidad\\[2pt] Knowledge Graph para Card Support}}
+\title{\textcolor{navy}{Análisis de viabilidad\\[2pt] Knowledge Graph para Dispute Transaction Support}}
 \author{Factored Hackathon 2026}
 \date{27 de septiembre de 2026}
 
@@ -49,12 +49,12 @@
 \maketitle
 
 \begin{abstract}
-Este informe evalúa la viabilidad de fortalecer una solución de \emph{Card Support Service} con un modelo probabilístico y un Knowledge Graph. La conclusión principal es que los datos no soportan todavía una inferencia amplia para todo el soporte de tarjetas, pero sí justifican una primera solución especializada en \textbf{Transaction Issue / Transaction Dispute Triage}, combinando herramientas determinísticas con inferencia interpretable.
+Este informe evalúa la viabilidad de fortalecer \emph{Dispute Transaction Support} con un modelo probabilístico y un Knowledge Graph. La conclusión principal es que los datos no soportan todavía una inferencia amplia para todo el soporte general de tarjetas, pero sí justifican una primera solución especializada en \textbf{Transaction Issue / Transaction Dispute Triage}, combinando herramientas determinísticas con inferencia interpretable.
 \end{abstract}
 
 \section{Conclusión ejecutiva}
 
-No conviene intentar todavía una inferencia probabilística amplia para todo \emph{Card Support Service}. Los datos sí alcanzan para una capa probabilística, pero el problema debe acotarse.
+No conviene ampliar todavía la inferencia probabilística de \emph{Dispute Transaction Support} hacia todo el soporte general de tarjetas. Los datos sí alcanzan para una capa probabilística, pero el problema debe acotarse.
 
 El mejor candidato es \textbf{Transaction Issue / Transaction Dispute Triage}, especialmente para:
 
@@ -108,7 +108,7 @@ Esta distribución proporciona targets transaccionales observables. Es considera
 \begin{table}[ht]
 \centering
 \small
-\caption{Evaluación de capacidades para Card Support}
+\caption{Evaluación de capacidades para Dispute Transaction Support}
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.31\textwidth} X}
 \toprule
 Capacidad & Evaluación \\
@@ -125,7 +125,7 @@ Crear un agente autónomo & \textbf{Insuficiente por ahora}. Se requiere autenti
 \end{tabularx}
 \end{table}
 
-\section{Por qué no conviene empezar por Card Support general}
+\section{Por qué no conviene ampliar hacia soporte general de tarjetas}
 
 Para un modelo de soporte general se necesitarían targets como:
 
@@ -224,7 +224,7 @@ Esto mantiene la misma filosofía de un modelo Naive Bayes/Knowledge Graph, pero
 La propuesta debería separar claramente consultas determinísticas de inferencia probabilística:
 
 \begin{lstlisting}
-CARD SUPPORT SERVICE
+DISPUTE TRANSACTION SUPPORT
         |
         +-- Deterministic tools
         |      estado de tarjeta
@@ -260,9 +260,9 @@ Esto permite analizar categorías, prioridad, SLA y recurrencia, pero limita el 
 \section{Recomendaciones para el proyecto}
 
 \begin{enumerate}
-  \item Presentar el producto como \textbf{Card Support Service} con herramientas determinísticas y una capa probabilística especializada en \textbf{Transaction Issue / Dispute Triage}.
+  \item Presentar el producto como \textbf{Dispute Transaction Support} con herramientas determinísticas y una capa probabilística especializada en \textbf{Transaction Issue / Dispute Triage}.
   \item No presentar inicialmente el sistema como un agente que resuelve automáticamente todo tipo de reclamo.
-  \item Crear una tabla normalizada \texttt{card\_support\_cases} con los campos:
+  \item Crear una tabla normalizada \texttt{dispute\_transaction\_cases} con los campos:
 \end{enumerate}
 
 \begin{lstlisting}
@@ -288,12 +288,12 @@ outcome
 
 \section{Conclusión}
 
-Para Card Support genérico no hay todavía suficiente información etiquetada para hacer una inferencia estadística tan sólida como la de un modelo de perfiles o arquetipos.
+Para ampliar Dispute Transaction Support hacia soporte general de tarjetas no hay todavía suficiente información etiquetada para hacer una inferencia estadística tan sólida como la de un modelo de perfiles o arquetipos.
 
 Para la parte transaccional sí existe una base adecuada: hay volumen, estados, señales de fraude, canales, montos, ubicaciones y contexto de tarjeta. Por eso, la dirección más defendible es:
 
 \begin{quote}
-\textbf{Card Support Service como producto: herramientas determinísticas + ML probabilístico interpretable especializado en Transaction Issue / Dispute Triage.}
+\textbf{Dispute Transaction Support: herramientas determinísticas + ML probabilístico interpretable especializado en Transaction Issue / Dispute Triage.}
 \end{quote}
 
 \end{document}

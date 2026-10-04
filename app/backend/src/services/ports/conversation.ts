@@ -72,6 +72,7 @@ export type ConversationRunner = (input: {
 	traceId: string;
 	message: string;
 	onDelta: (value: string) => Promise<void>;
+	onState?: (status: "retrieving" | "generating") => Promise<void>;
 }) => Promise<{
 	status: ConversationTrace["status"];
 	response: string;

@@ -64,3 +64,28 @@ telemetría P0: `../../docs/planning/evals.md` establece OTel + BigQuery y
 evaluadores TypeScript/JEV como la ruta vigente. Los flags de integración permanecen desactivados hasta que su adaptador,
 contrato, pruebas y políticas de región/retención estén implementados. Firestore
 es durable; Valkey solo mantiene estado con TTL.
+
+## Baseline comparativo de chat
+
+`CHAT_PIPELINE=demo` conserva el runner determinista local. Para seleccionar el
+comparador clásico se necesitan, en el entorno del proceso, `CHAT_PIPELINE=baseline`,
+`BASELINE_CHAT_ENABLED=true`, `VERTEX_AI_*`, `BIGQUERY_ENABLED=true`,
+`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `BIGQUERY_DATASET`,
+`DEMO_AUTH_ENABLED=true`, `DEMO_ACTOR_HMAC_KEY`, `REALTIME_ENABLED=true` y
+`CORS_ALLOWED_ORIGINS`. El backend usa ADC/IAM; no acepta una clave de servicio
+en Git. `BASELINE_QUERY_CATALOG_PATH` apunta por defecto al catálogo de ejemplo
+y `BASELINE_MAX_RETRIEVAL_ATTEMPTS` está limitado a uno o dos intentos.
+El backend rechaza el arranque si falta alguno o si se intenta mezclarlo con
+`AGENTIC_CHAT_ENABLED=true` (`SVC-CORE-9011`). El cliente no puede elegirlo.
+
+El baseline recibe texto, el DDL estático de las tablas relevantes del
+diccionario y una herramienta nativa `retrieve_context`. La herramienta carga
+los tres `QueryPlan` de ejemplo, liga el `customer_id` al actor demo desde la
+sesión y ejecuta una consulta acotada; ni el navegador ni el modelo aportan SQL
+o identificadores de cliente. Sus filas retornan al modelo, por lo que sólo es
+aceptable para datos sintéticos o expresamente aprobados para el experimento.
+Intencionalmente no invoca privacidad, Model Armor, JEV, policy, filtrado de
+roles, evidencia ni recuperación gobernada. La observación saneada contiene
+duración, llamadas de modelo, intentos/éxitos de recuperación, resultado y
+error allowlisted, sin prompt, parámetros ni filas; `BaselineChatEvaluator` la
+puede comparar después con las métricas de ADR 0015.

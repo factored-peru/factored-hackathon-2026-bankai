@@ -30,6 +30,12 @@ schema, evidencia o autorización. El grafo no acepta consultas libres, y Naive
 Bayes solo contribuye señales exploratorias/provenance, nunca autorización ni
 acción automática.
 
+El `baseline` comparativo no es una tercera ruta RAG: usa un catálogo de
+ejemplo y un tool de QueryPlan para contrastar el chat con recuperación mínima.
+Aunque conserva el binding de sesión y las cotas del ejecutor, omite catálogo
+gobernado por rol, JEV, policy y `EvidenceDTO`; no puede invocarse desde la ruta
+autorizada ni tratarse como recuperación confiable por tenant.
+
 ## Consequences
 
 Cada respuesta recuperada es reproducible y trazable. Qdrant y vector-RAG no

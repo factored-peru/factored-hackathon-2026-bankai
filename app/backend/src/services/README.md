@@ -87,6 +87,14 @@ Las solicitudes fuera de dominio terminan con una plantilla segura y las
 solicitudes ambiguas crean una aclaración durable sin ejecutar RAG, tools o
 generación.
 
+`baseline/baseline-conversation-runner.ts` no hereda de `AgentControlService`:
+ambos comparten solamente el puerto `ConversationRunner`. El baseline recibe un
+`BaselineChatModel` con function calling, el DDL estático de soporte/disputas y
+un `BaselineContextTool`. El tool reutiliza mecánica de `QueryPlan` (binding de
+sesión y límites de ejecución) pero no el selector, gates ni evidencia de la
+ruta gobernada. `BaselineRunObserver` recibe únicamente mediciones saneadas
+para evaluación comparativa.
+
 - `ports/` contiene interfaces para modelos, guardrails, policy, tools,
   retrieval, workflows, idempotencia y auditoría.
 - `control-plane/` implementa el orden de mediación y los presupuestos.

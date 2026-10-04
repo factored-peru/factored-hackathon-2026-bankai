@@ -42,6 +42,14 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
   desactivado falla cerrado, nunca cae en otro modelo.
 - `tools/` y `providers/`: registros allowlisted y proveedores fail-closed.
 
+`providers/vertex-baseline-chat-provider.ts` es una excepción deliberada para
+el experimento comparativo: adapta Vertex function calling sin incorporar
+gates. El composition root lo combina con `BaselineQueryTool` sólo cuando
+`CHAT_PIPELINE=baseline` y `BASELINE_CHAT_ENABLED=true`; ese tool recibe el
+adaptador BigQuery, pero conserva QueryPlan, binding de sesión y límites. La
+configuración y alcance experimental están documentados en `config/README.md`
+y ADR 0004/0015.
+
 Los adaptadores no se conectan durante import-time. El composition root los
 crea, inyecta y cierra. Los puertos permanecen en `src/services/ports`; ninguna
 ruta HTTP conoce detalles de GCS, BigQuery, Firestore o Valkey.
