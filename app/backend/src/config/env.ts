@@ -41,6 +41,7 @@ export const envSchema = z.object({
 	DATABASE_READONLY_URL: z.string().default(""),
 	FIRESTORE_ENABLED: envBoolean.default(false),
 	BIGQUERY_ENABLED: envBoolean.default(false),
+	// Structured RAG: tables are fully qualified from these, never from a prompt.
 	BIGQUERY_DATASET: z.string().default("hackathon"),
 	BIGQUERY_JOB_TIMEOUT_MS: z.coerce
 		.number()
@@ -86,6 +87,14 @@ export const envSchema = z.object({
 	JEV_BASE_URL: z.string().default(""),
 	JEV_API_KEY: z.string().default(""),
 	JEV_MODEL: z.string().default(""),
+	// Below this confidence a choice is treated as ambiguous, not executed.
+	JEV_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.7),
+	JEV_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.positive()
+		.max(60_000)
+		.default(10_000),
 	OPENAI_ENABLED: envBoolean.default(false),
 	OPENAI_BASE_URL: z.string().default("https://api.openai.com/v1"),
 	OPENAI_API_KEY: z.string().default(""),
@@ -292,6 +301,62 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		throw new Error(
 			"SVC-CORE-9005: PRIVATE_DATA_ENCRYPTION_KEY is required when SESSION_STORE_ENABLED is true",
 		);
+	}
+
+	if (settings.BIGQUERY_ENABLED) {
+		const invalid = [
+			["GOOGLE_CLOUD_PROJECT", settings.GOOGLE_CLOUD_PROJECT],
+			["BIGQUERY_DATASET", settings.BIGQUERY_DATASET],
+		]
+			.filter(([, value]) => !/^[A-Za-z0-9_-]+$/.test(value ?? ""))
+			.map(([name]) => name);
+		if (settings.GOOGLE_CLOUD_LOCATION.length === 0) {
+			invalid.push("GOOGLE_CLOUD_LOCATION");
+		}
+		if (settings.STRUCTURED_CATALOG_PATH.length === 0) {
+			invalid.push("STRUCTURED_CATALOG_PATH");
+		}
+		if (invalid.length > 0) {
+			throw new Error(
+				`SVC-CORE-9006: BIGQUERY_ENABLED requires valid ${invalid.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.JEV_ENABLED) {
+		const missing = [
+			["JEV_BASE_URL", settings.JEV_BASE_URL],
+			["JEV_API_KEY", settings.JEV_API_KEY],
+			["JEV_MODEL", settings.JEV_MODEL],
+		]
+			.filter(([, value]) => (value ?? "").length === 0)
+			.map(([name]) => name);
+		if (
+			settings.JEV_BASE_URL.length > 0 &&
+			!settings.JEV_BASE_URL.startsWith("https://")
+		) {
+			missing.push("JEV_BASE_URL (https)");
+		}
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9007: JEV_ENABLED requires valid ${missing.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.VERTEX_AI_ENABLED) {
+		const missing = [
+			["VERTEX_AI_PROJECT_ID", settings.VERTEX_AI_PROJECT_ID],
+			["VERTEX_AI_LOCATION", settings.VERTEX_AI_LOCATION],
+			["VERTEX_AI_MODEL", settings.VERTEX_AI_MODEL],
+		]
+			.filter(([, value]) => !/^[A-Za-z0-9._-]+$/.test(value ?? ""))
+			.map(([name]) => name);
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9008: VERTEX_AI_ENABLED requires valid ${missing.join(", ")}`,
+			);
+		}
 	}
 
 	if (

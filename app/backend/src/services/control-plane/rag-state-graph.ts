@@ -1,16 +1,37 @@
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
+import {
+	Annotation,
+	type BaseCheckpointSaver,
+	END,
+	START,
+	StateGraph,
+} from "@langchain/langgraph";
 import type { SessionContext } from "../../domain/session.js";
 import type { BaseRag } from "../retrieval/base-rag.js";
 import type {
 	BaseRagCatalogRepository,
 	RagCatalog,
 } from "../retrieval/rag-catalog.js";
+import { stableHash } from "./stable-hash.js";
 
 export type PrimaryJevRoute = "llm" | "database" | "relations" | "ood";
+
+/**
+ * One prior message of the thread. `content` must already be de-identified by
+ * the input stage: the graph never receives or persists raw user text.
+ */
+export type ConversationTurn = Readonly<{
+	role: "user" | "assistant";
+	content: string;
+}>;
+
+/** Upper bound of turns kept per thread so memory and JEV input stay bounded. */
+export const MAX_CONVERSATION_TURNS = 20;
 
 export interface PrimaryJevRouter {
 	assess(input: {
 		query: string;
+		/** Prior turns of this thread, excluding the current `query`. */
+		history: readonly ConversationTurn[];
 		session: SessionContext;
 		traceId: string;
 	}): Promise<PrimaryJevRoute>;
@@ -32,9 +53,16 @@ const ragState = Annotation.Root({
 	route: Annotation<PrimaryJevRoute>,
 	catalog: Annotation<RagCatalog | null>,
 	terminalReason: Annotation<string | null>,
-	executionOrder: Annotation<string[]>({
+	// Persisted per thread by the checkpointer; `begin_turn` appends the user turn.
+	history: Annotation<ConversationTurn[]>({
 		default: () => [],
-		reducer: (left, right) => [...left, ...right],
+		reducer: (left, right) =>
+			[...left, ...right].slice(-MAX_CONVERSATION_TURNS),
+	}),
+	// `null` resets the trace at the start of each turn.
+	executionOrder: Annotation<string[], string[] | null>({
+		default: () => [],
+		reducer: (left, right) => (right === null ? [] : [...left, ...right]),
 	}),
 });
 
@@ -48,7 +76,26 @@ export type RagStateGraphDependencies = Readonly<{
 	knowledgeGraphJev: CatalogJevRouter;
 	structuredRag: BaseRag;
 	knowledgeGraphRag: BaseRag;
+	/** Thread memory. Omit for stateless runs; inject an adapter per environment. */
+	checkpointer?: BaseCheckpointSaver;
 }>;
+
+/**
+ * Binds a LangGraph thread to the authenticated session so a revoked, rotated
+ * or foreign session can never resume another thread's history.
+ */
+export function ragThreadConfig(session: SessionContext, threadId: string) {
+	return {
+		configurable: {
+			thread_id: stableHash({
+				tenantId: session.tenantId,
+				userId: session.userId,
+				sessionId: session.sessionId,
+				threadId,
+			}),
+		},
+	};
+}
 
 /**
  * Explicit retrieval branch of the online control plane.
@@ -60,10 +107,19 @@ export type RagStateGraphDependencies = Readonly<{
 export function createRagStateGraph(dependencies: RagStateGraphDependencies) {
 	const append = (step: string) => ({ executionOrder: [step] });
 	const graph = new StateGraph(ragState)
+		// Per-turn fields must not leak from the previous turn of the same thread.
+		.addNode("begin_turn", (state) => ({
+			executionOrder: null,
+			terminalReason: null,
+			catalog: null,
+			history: [{ role: "user" as const, content: state.query }],
+		}))
 		.addNode("primary_jev", async (state) => ({
 			...append("primary_jev"),
 			route: await dependencies.primaryJev.assess({
 				query: state.query,
+				// The current turn was just appended by `begin_turn`.
+				history: state.history.slice(0, -1),
 				session: state.session,
 				traceId: state.traceId,
 			}),
@@ -154,7 +210,8 @@ export function createRagStateGraph(dependencies: RagStateGraphDependencies) {
 				? append("kg_rag")
 				: { ...append("kg_rag"), terminalReason: result.reasonCode };
 		})
-		.addEdge(START, "primary_jev")
+		.addEdge(START, "begin_turn")
+		.addEdge("begin_turn", "primary_jev")
 		.addConditionalEdges("primary_jev", (state) => state.route, {
 			llm: END,
 			ood: END,
@@ -176,5 +233,9 @@ export function createRagStateGraph(dependencies: RagStateGraphDependencies) {
 		)
 		.addEdge("kg_rag", END);
 
-	return graph.compile();
+	return graph.compile(
+		dependencies.checkpointer
+			? { checkpointer: dependencies.checkpointer }
+			: {},
+	);
 }
