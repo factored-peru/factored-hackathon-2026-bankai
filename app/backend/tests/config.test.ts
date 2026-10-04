@@ -97,6 +97,28 @@ port = 9001
 		expect(settings.LOG_LEVEL).toBe("warn");
 	});
 
+	test("development profile can enable the self-contained browser demo", () => {
+		const values = flattenTomlSettings({
+			app: { env: "dev" },
+			profiles: {
+				dev: {
+					app: {
+						demo_auth_enabled: true,
+						realtime_enabled: true,
+						cors_allowed_origins: "http://localhost:3001,http://127.0.0.1:3001",
+						session_cookie_name: "bankai-demo-session",
+					},
+				},
+			},
+		});
+		const settings = envSchema.parse(values);
+
+		expect(settings.DEMO_AUTH_ENABLED).toBe(true);
+		expect(settings.REALTIME_ENABLED).toBe(true);
+		expect(settings.CORS_ALLOWED_ORIGINS).toContain("localhost:3001");
+		expect(settings.SESSION_COOKIE_NAME).toBe("bankai-demo-session");
+	});
+
 	test("production requires a service token", () => {
 		const settings = envSchema.parse({ APP_ENV: "prod" });
 

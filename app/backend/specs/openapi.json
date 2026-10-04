@@ -7,7 +7,7 @@
 	},
 	"servers": [
 		{
-			"url": "http://127.0.0.1:3000",
+			"url": "http://localhost:3000",
 			"description": "Development"
 		}
 	],
@@ -20,6 +20,9 @@
 		},
 		{
 			"name": "disputes"
+		},
+		{
+			"name": "conversations"
 		}
 	],
 	"paths": {
@@ -37,6 +40,21 @@
 									"type": "object"
 								}
 							}
+						}
+					}
+				}
+			}
+		},
+		"/asyncapi.json": {
+			"get": {
+				"operationId": "getAsyncApiSpec",
+				"tags": ["health"],
+				"summary": "Get canonical AsyncAPI realtime contract",
+				"responses": {
+					"200": {
+						"description": "AsyncAPI document",
+						"content": {
+							"application/json": { "schema": { "type": "object" } }
 						}
 					}
 				}
@@ -303,7 +321,8 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [{ "sessionCookie": [] }]
 			}
 		},
 		"/v1/disputes/{disputeId}": {
@@ -352,7 +371,8 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [{ "sessionCookie": [] }]
 			}
 		},
 		"/v1/dispute-cases/{caseId}/escalations": {
@@ -409,7 +429,58 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [{ "sessionCookie": [] }]
+			}
+		},
+		"/v1/dispute-cases/{caseId}": {
+			"get": {
+				"operationId": "getDisputeCase",
+				"tags": ["disputes"],
+				"summary": "Get an authorized synthetic dispute case",
+				"parameters": [
+					{
+						"name": "caseId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Case evidence",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/DisputeCase" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Tenant or ownership denied",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Case unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				},
+				"security": [{ "sessionCookie": [] }]
 			}
 		},
 		"/v1/approvals/{approvalId}/decisions": {
@@ -468,7 +539,357 @@
 							}
 						}
 					}
+				},
+				"security": [{ "sessionCookie": [] }]
+			}
+		},
+		"/v1/demo/actors": {
+			"get": {
+				"operationId": "listDemoActors",
+				"tags": ["conversations"],
+				"summary": "List safe demo actor aliases",
+				"responses": {
+					"200": {
+						"description": "Demo actor aliases",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": { "$ref": "#/components/schemas/DemoActor" }
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Demo mode unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
 				}
+			}
+		},
+		"/v1/demo/fixtures": {
+			"get": {
+				"operationId": "getDemoFixtures",
+				"tags": ["conversations", "disputes"],
+				"summary": "Get IDs of the synthetic in-memory demo fixture",
+				"responses": {
+					"200": {
+						"description": "Safe fixture identifiers",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/DemoFixtures" }
+							}
+						}
+					},
+					"502": {
+						"description": "Demo mode unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/demo/sessions": {
+			"post": {
+				"operationId": "createDemoSession",
+				"tags": ["conversations"],
+				"summary": "Create a mock customer or backoffice session",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["actorId"],
+								"properties": { "actorId": { "type": "string" } },
+								"additionalProperties": false
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Opaque session cookie created",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/DemoSession" }
+							}
+						}
+					},
+					"401": {
+						"description": "Unknown demo actor",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"502": {
+						"description": "Demo mode unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/me": {
+			"get": {
+				"operationId": "getCurrentSession",
+				"tags": ["conversations"],
+				"summary": "Get safe current session context",
+				"responses": {
+					"200": {
+						"description": "Safe session",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/SafeSession" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				},
+				"security": [{ "sessionCookie": [] }]
+			}
+		},
+		"/v1/conversations": {
+			"get": {
+				"operationId": "listConversations",
+				"tags": ["conversations"],
+				"summary": "List authorized sanitized conversation snapshots",
+				"responses": {
+					"200": {
+						"description": "Snapshots",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ConversationSnapshot"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				},
+				"security": [{ "sessionCookie": [] }]
+			}
+		},
+		"/v1/conversations/{threadId}": {
+			"get": {
+				"operationId": "getConversation",
+				"tags": ["conversations"],
+				"summary": "Get an authorized sanitized conversation snapshot",
+				"parameters": [
+					{
+						"name": "threadId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Snapshot",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConversationSnapshot"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Conversation unavailable or unauthorized",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				},
+				"security": [{ "sessionCookie": [] }]
+			}
+		},
+		"/v1/uploads": {
+			"post": {
+				"operationId": "createConversationUpload",
+				"tags": ["conversations"],
+				"summary": "Create a controlled image or audio upload",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": { "$ref": "#/components/schemas/CreateUploadRequest" },
+							"examples": {
+								"image": {
+									"value": {
+										"kind": "image",
+										"mediaType": "image/png",
+										"byteSize": 3,
+										"filename": "receipt.png"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Upload authorization",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/UploadAuthorization" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"422": {
+						"description": "Invalid attachment",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				},
+				"security": [{ "sessionCookie": [] }]
+			}
+		},
+		"/v1/demo/uploads/{attachmentId}": {
+			"put": {
+				"operationId": "uploadDemoAttachment",
+				"tags": ["conversations"],
+				"summary": "Upload attachment bytes to the local in-memory demo",
+				"parameters": [
+					{
+						"name": "attachmentId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"image/png": { "schema": { "type": "string", "format": "binary" } },
+						"image/jpeg": {
+							"schema": { "type": "string", "format": "binary" }
+						},
+						"audio/mpeg": {
+							"schema": { "type": "string", "format": "binary" }
+						},
+						"audio/wav": { "schema": { "type": "string", "format": "binary" } }
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Bytes accepted",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/Attachment" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Attachment ownership, type, size or state conflict",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				},
+				"security": [{ "sessionCookie": [] }]
+			}
+		},
+		"/v1/uploads/{attachmentId}/complete": {
+			"post": {
+				"operationId": "completeConversationUpload",
+				"tags": ["conversations"],
+				"summary": "Validate a completed controlled upload",
+				"parameters": [
+					{
+						"name": "attachmentId",
+						"in": "path",
+						"required": true,
+						"schema": { "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Validated attachment",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/Attachment" }
+							}
+						}
+					},
+					"401": {
+						"description": "Session missing or expired",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Attachment unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				},
+				"security": [{ "sessionCookie": [] }]
 			}
 		}
 	},
@@ -480,6 +901,19 @@
 					"type": "string",
 					"pattern": "^SVC-[A-Z]{3,4}-[0-9]{4}$"
 				}
+			}
+		},
+		"securitySchemes": {
+			"serviceToken": {
+				"type": "http",
+				"scheme": "bearer",
+				"description": "Optional service-to-service token. Required on protected routes when SERVICE_TOKEN is configured."
+			},
+			"sessionCookie": {
+				"type": "apiKey",
+				"in": "cookie",
+				"name": "bankai-demo-session",
+				"description": "Opaque browser session. Local demo creates it through POST /v1/demo/sessions."
 			}
 		},
 		"schemas": {
@@ -554,6 +988,107 @@
 						"additionalProperties": true,
 						"default": {}
 					}
+				},
+				"additionalProperties": false
+			},
+			"DemoActor": {
+				"type": "object",
+				"required": ["actorId", "label", "role", "recommended"],
+				"properties": {
+					"actorId": { "type": "string" },
+					"label": { "type": "string" },
+					"role": { "enum": ["customer", "backoffice"] },
+					"recommended": { "type": "boolean" }
+				},
+				"additionalProperties": false
+			},
+			"DemoSession": {
+				"type": "object",
+				"required": ["status", "role"],
+				"properties": {
+					"status": { "const": "created" },
+					"role": { "enum": ["customer", "backoffice"] }
+				},
+				"additionalProperties": false
+			},
+			"DemoFixtures": {
+				"type": "object",
+				"required": ["transactionId", "disputeId", "caseId"],
+				"properties": {
+					"transactionId": { "const": "demo-transaction-1" },
+					"disputeId": { "const": "demo-dispute-1" },
+					"caseId": { "const": "demo-case-1" }
+				},
+				"additionalProperties": false
+			},
+			"SafeSession": {
+				"type": "object",
+				"required": [
+					"userId",
+					"tenantId",
+					"roles",
+					"capabilities",
+					"sessionVersion"
+				],
+				"properties": {
+					"userId": { "type": "string" },
+					"tenantId": { "type": "string" },
+					"roles": { "type": "array", "items": { "type": "string" } },
+					"capabilities": { "type": "array", "items": { "type": "string" } },
+					"sessionVersion": { "type": "integer" }
+				},
+				"additionalProperties": false
+			},
+			"Attachment": {
+				"type": "object",
+				"required": ["attachmentId", "kind", "mediaType", "status"],
+				"properties": {
+					"attachmentId": { "type": "string" },
+					"kind": { "enum": ["image", "audio"] },
+					"mediaType": { "type": "string" },
+					"status": {
+						"enum": ["pending_upload", "pending_review", "ready", "rejected"]
+					}
+				},
+				"additionalProperties": false
+			},
+			"UploadAuthorization": {
+				"type": "object",
+				"required": ["attachment", "uploadUrl"],
+				"properties": {
+					"attachment": { "$ref": "#/components/schemas/Attachment" },
+					"uploadUrl": { "type": "string" }
+				},
+				"additionalProperties": false
+			},
+			"CreateUploadRequest": {
+				"type": "object",
+				"required": ["kind", "mediaType", "byteSize", "filename"],
+				"properties": {
+					"kind": { "enum": ["image", "audio"] },
+					"mediaType": { "type": "string", "minLength": 1 },
+					"byteSize": { "type": "integer", "minimum": 1, "maximum": 10485760 },
+					"filename": { "type": "string", "minLength": 1 }
+				},
+				"additionalProperties": false
+			},
+			"ConversationSnapshot": {
+				"type": "object",
+				"required": [
+					"threadId",
+					"tenantId",
+					"ownerUserId",
+					"revision",
+					"messages",
+					"trace"
+				],
+				"properties": {
+					"threadId": { "type": "string" },
+					"tenantId": { "type": "string" },
+					"ownerUserId": { "type": "string" },
+					"revision": { "type": "integer" },
+					"messages": { "type": "array", "items": { "type": "object" } },
+					"trace": { "type": "object" }
 				},
 				"additionalProperties": false
 			},
@@ -690,6 +1225,20 @@
 				},
 				"additionalProperties": false
 			},
+			"DisputeCase": {
+				"type": "object",
+				"required": ["caseId", "disputeId", "status", "createdAt", "updatedAt"],
+				"properties": {
+					"caseId": { "type": "string" },
+					"disputeId": { "type": "string" },
+					"status": {
+						"enum": ["open", "pending_approval", "escalated", "denied"]
+					},
+					"createdAt": { "type": "string", "format": "date-time" },
+					"updatedAt": { "type": "string", "format": "date-time" }
+				},
+				"additionalProperties": false
+			},
 			"EscalationRequest": {
 				"type": "object",
 				"required": ["reasonCode"],
@@ -744,13 +1293,6 @@
 					}
 				},
 				"additionalProperties": false
-			}
-		},
-		"securitySchemes": {
-			"serviceToken": {
-				"type": "http",
-				"scheme": "bearer",
-				"description": "Optional service-to-service token. Required on protected routes when SERVICE_TOKEN is configured."
 			}
 		}
 	}

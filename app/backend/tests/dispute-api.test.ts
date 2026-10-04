@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { env } from "../src/config/env.js";
+import { env, envSchema } from "../src/config/env.js";
 import { buildServer } from "../src/http/server.js";
 import {
 	InMemoryDisputeEventSink,
@@ -144,7 +144,9 @@ describe("Dispute Transaction Support HTTP API", () => {
 	});
 
 	test("fails closed when no dispute runtime is configured", async () => {
-		const app = await buildServer({ env });
+		const app = await buildServer({
+			env: envSchema.parse({ APP_ENV: "dev", DEMO_AUTH_ENABLED: false }),
+		});
 		const response = await app.inject({
 			method: "POST",
 			url: "/v1/sessions",

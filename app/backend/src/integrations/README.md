@@ -9,6 +9,10 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
 - `kv/`: contrato y adaptador RESP `node-redis` para Memorystore for Valkey.
 - `bigquery/`: ejecutor ADC para planes Structured RAG catalogados; aplica
   tenant server-side, parámetros nombrados, límite de bytes, timeout y filas.
+- `firestore/`: snapshots conversacionales saneados con revisión optimista;
+  requiere Firestore y no se activa en memoria de producción.
+- `gcs/`: carga privada de adjuntos por URL firmada; nunca transporta binarios
+  por WebSocket ni los entrega a un modelo en el MVP.
 - `memory/`: dobles volátiles para pruebas, nunca persistencia de producción.
 - `tools/` y `providers/`: registros allowlisted y proveedores fail-closed.
 
