@@ -63,6 +63,9 @@ decisión de negocio.
   ubicación del template. `MODEL_ARMOR_ENABLED=false` mantiene el guardrail
   fail-closed. `MODEL_ARMOR_DEIDENTIFY_TEMPLATE` y `SDP_*` aún no se usan.
 - `OTEL_*`: telemetría sin contenido privado y métricas de evaluadores TypeScript.
+- `LANGFUSE_*`: dependencia declarada para Langfuse Cloud US como visualizador
+  OTel metadata-only (ADR 0012/0015). `LANGFUSE_ENABLED` permanece `false` y el
+  exportador no envía tráfico hasta P0-33; no se usa Docker self-host en P0.
 
 LangSmith, DeepEval, Promptfoo y DeepAgents no son dependencias ni destinos de
 telemetría P0: `../../docs/planning/evals.md` establece OTel + BigQuery y

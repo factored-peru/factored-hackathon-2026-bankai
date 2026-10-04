@@ -44,7 +44,8 @@ export class BigQueryDemoActorDirectory implements DemoActorDirectory {
 				tenantId: "demo-bankai",
 				roles: ["backoffice"],
 				capabilities: [
-					"dispute:read",
+					"dispute.read",
+					"dispute.transaction.read",
 					"conversation:read:any",
 					"dispute.escalation.decide",
 				],
@@ -57,7 +58,12 @@ export class BigQueryDemoActorDirectory implements DemoActorDirectory {
 					userId: actorId,
 					tenantId: "demo-bankai",
 					roles: ["customer"],
-					capabilities: ["dispute:read", "conversation:write"],
+					capabilities: [
+						"dispute.read",
+						"dispute.transaction.read",
+						"dispute.escalation.request",
+						"conversation:write",
+					],
 				}
 			: null;
 	}

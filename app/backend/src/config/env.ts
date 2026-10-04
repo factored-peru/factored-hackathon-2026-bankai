@@ -134,6 +134,11 @@ export const envSchema = z.object({
 	OTEL_ENABLED: envBoolean.default(false),
 	OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default(""),
 	OTEL_EXPORTER_OTLP_HEADERS: z.string().default(""),
+	// Langfuse Cloud US (ADR 0012): metadata visualizer only; keys never in Git.
+	LANGFUSE_ENABLED: envBoolean.default(false),
+	LANGFUSE_PUBLIC_KEY: z.string().default(""),
+	LANGFUSE_SECRET_KEY: z.string().default(""),
+	LANGFUSE_BASE_URL: z.string().default("https://us.cloud.langfuse.com"),
 	// HTTP and agent guardrails.
 	CORS_ALLOWED_ORIGINS: z.string().default(""),
 	TRUSTED_PROXY: z.string().default(""),

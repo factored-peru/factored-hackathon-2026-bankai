@@ -45,6 +45,8 @@ export const disputeCaseSchema = z
 		status: z.enum(["open", "pending_approval", "escalated", "denied"]),
 		createdAt: z.string().datetime(),
 		updatedAt: z.string().datetime(),
+		provenance: z.literal("synthetic_local_fixture"),
+		version: z.literal("dispute-demo-v1"),
 	})
 	.strict();
 export type DisputeCase = z.infer<typeof disputeCaseSchema>;

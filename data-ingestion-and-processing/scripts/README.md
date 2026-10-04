@@ -9,8 +9,10 @@ El entrypoint es `bankai-pipeline` (o `python -m bankai_pipeline.cli`) y exige
 Las implementaciones deben producir manifests, checksums y lineage antes de
 publicar artefactos consumibles por el backend.
 
-`list_bigquery_tables.py` es una utilidad read-only de inventario. La etapa
-`kdd` requiere `--kdd-config`; su configuración de ejemplo está en
+`list_bigquery_tables.py` es una utilidad read-only de inventario.
+`run_phase1_baseline.py` ejecuta las consultas agregadas versionadas de Fase 1
+(P0-01/P0-02/P0-05) sobre BigQuery con ADC; escribe agregados sin PII.
+La etapa `kdd` requiere `--kdd-config`; su configuración de ejemplo está en
 `../config/kdd.toml.example` y no invoca `compile-graph` ni `publish`.
 
 El archivo `bootstrap_csv_to_bigquery.py` se conserva como utilidad manual

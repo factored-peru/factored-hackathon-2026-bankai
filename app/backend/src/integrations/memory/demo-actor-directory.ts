@@ -2,6 +2,20 @@ import type { DemoActorDirectory } from "../../services/ports/conversation.js";
 
 const tenantId = "demo-bankai";
 
+const customerCapabilities = [
+	"dispute.read",
+	"dispute.transaction.read",
+	"dispute.escalation.request",
+	"conversation:write",
+] as const;
+
+const backofficeCapabilities = [
+	"dispute.read",
+	"dispute.transaction.read",
+	"conversation:read:any",
+	"dispute.escalation.decide",
+] as const;
+
 export class InMemoryDemoActorDirectory implements DemoActorDirectory {
 	async list() {
 		return [
@@ -26,22 +40,14 @@ export class InMemoryDemoActorDirectory implements DemoActorDirectory {
 				userId: actorId,
 				tenantId,
 				roles: ["customer"],
-				capabilities: [
-					"dispute:read",
-					"dispute.escalation.request",
-					"conversation:write",
-				],
+				capabilities: [...customerCapabilities],
 			};
 		if (actorId === "demo-backoffice-1")
 			return {
 				userId: actorId,
 				tenantId,
 				roles: ["backoffice"],
-				capabilities: [
-					"dispute:read",
-					"conversation:read:any",
-					"dispute.escalation.decide",
-				],
+				capabilities: [...backofficeCapabilities],
 			};
 		return null;
 	}

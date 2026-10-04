@@ -29,11 +29,13 @@ No sustituye los ADR ni convierte la hoja de cálculo en arquitectura normativa.
   bloqueados. No se materializan cliente, reclamo o transacción individual.
 - El baseline comparativo no se convierte en vía autorizada y permanece fuera
   del `StateGraph`.
-- La implementación actual no agrega DeepEval, LangSmith, Promptfoo,
-  AgentEvals ni Langfuse. La decisión posterior para P0-33 adopta Langfuse
-  Cloud US como visualizador OTel metadata-only, todavía sin SDK, claves,
-  exportador, Docker ni tráfico configurado. OpenTelemetry y una futura
-  persistencia BigQuery sólo aceptan metadata saneada.
+- La implementación actual no agrega DeepEval, LangSmith, Promptfoo ni
+  AgentEvals. La dependencia `langfuse` queda declarada en el backend con
+  exportador metadata-only **deshabilitado** (`OTEL_ENABLED` /
+  `LANGFUSE_ENABLED` en false); P0-33 (Alexandra) activa el cableado OTel →
+  Langfuse Cloud US sin contenido. No hay Docker self-host de Langfuse.
+  OpenTelemetry y una futura persistencia BigQuery sólo aceptan metadata
+  saneada.
 - La transferencia S3→GCS, Eventarc, Cloud Tasks y `ingestion_ledger` siguen
   siendo responsabilidades de la ingesta ADR 0020 y no se sustituyen por un
   script local o acceso desde el backend.

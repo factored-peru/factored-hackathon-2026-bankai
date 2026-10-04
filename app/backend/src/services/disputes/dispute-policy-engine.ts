@@ -2,37 +2,28 @@ import type {
 	ModelDecision,
 	PolicyDecision,
 } from "../../domain/control/contracts.js";
+import {
+	canonicalizeDisputeRoles,
+	DISPUTE_CAPABILITY_MATRIX_VERSION,
+	DISPUTE_POLICY_ID,
+	type DisputeCapabilityActionId,
+	disputeCapabilityMatrixByActionId,
+} from "../../domain/disputes/capability-matrix.js";
 import type { SessionContext } from "../../domain/session.js";
 import { stableHash } from "../control-plane/stable-hash.js";
 import type { PolicyEngine } from "../ports/control.js";
 
-export const disputeCapabilityMatrix = {
-	"transaction.read": {
-		roles: ["client", "operator"],
-		capability: "dispute.transaction.read",
-		outcome: "ALLOW",
-	},
-	"dispute.read": {
-		roles: ["client", "operator"],
-		capability: "dispute.read",
-		outcome: "ALLOW",
-	},
-	"escalation.request": {
-		roles: ["client"],
-		capability: "dispute.escalation.request",
-		outcome: "REQUIRE_APPROVAL",
-	},
-	"dispute.submit": {
-		roles: [],
-		capability: "",
-		outcome: "DENY",
-	},
-	"dispute.cancel": {
-		roles: [],
-		capability: "",
-		outcome: "DENY",
-	},
-} as const satisfies Record<
+/** @deprecated Prefer disputeCapabilityMatrixByActionId from domain. */
+export const disputeCapabilityMatrix = Object.fromEntries(
+	Object.entries(disputeCapabilityMatrixByActionId).map(([actionId, entry]) => [
+		actionId,
+		{
+			roles: entry.roles,
+			capability: entry.capability,
+			outcome: entry.outcome,
+		},
+	]),
+) as Record<
 	string,
 	Readonly<{
 		roles: readonly string[];
@@ -41,20 +32,19 @@ export const disputeCapabilityMatrix = {
 	}>
 >;
 
-type DisputeOperation = keyof typeof disputeCapabilityMatrix;
-
 function operationFrom(input: {
 	state: { requestedTool: string | null };
 	modelDecision: ModelDecision;
-}): DisputeOperation | null {
+}): DisputeCapabilityActionId | null {
 	const candidate =
 		input.state.requestedTool ??
 		(input.modelDecision.kind === "tool"
 			? input.modelDecision.call.toolId
 			: null);
-	return candidate && candidate in disputeCapabilityMatrix
-		? (candidate as DisputeOperation)
-		: null;
+	if (!candidate || !(candidate in disputeCapabilityMatrixByActionId)) {
+		return null;
+	}
+	return candidate as DisputeCapabilityActionId;
 }
 
 export class DisputePolicyEngine implements PolicyEngine {
@@ -65,12 +55,23 @@ export class DisputePolicyEngine implements PolicyEngine {
 		signal: Parameters<PolicyEngine["evaluate"]>[0]["signal"];
 	}): Promise<PolicyDecision> {
 		const operation = operationFrom(input);
-		const definition = operation ? disputeCapabilityMatrix[operation] : null;
+		const definition = operation
+			? disputeCapabilityMatrixByActionId[operation]
+			: null;
+		const sessionRoles = canonicalizeDisputeRoles(input.session.roles);
+		const rolePermitted = Boolean(
+			definition?.roles.some((role) => sessionRoles.includes(role)),
+		);
+		const capabilityPermitted = Boolean(
+			definition &&
+				definition.capability.length > 0 &&
+				input.session.capabilities.includes(definition.capability),
+		);
 		const permitted = Boolean(
 			definition &&
 				definition.outcome !== "DENY" &&
-				definition.roles.some((role) => input.session.roles.includes(role)) &&
-				input.session.capabilities.includes(definition.capability),
+				rolePermitted &&
+				capabilityPermitted,
 		);
 		const outcome =
 			definition?.outcome === "DENY" || !permitted
@@ -83,8 +84,8 @@ export class DisputePolicyEngine implements PolicyEngine {
 				operation,
 				outcome,
 			}),
-			policyId: "dispute-transaction-support",
-			policyVersion: "v1",
+			policyId: DISPUTE_POLICY_ID,
+			policyVersion: DISPUTE_CAPABILITY_MATRIX_VERSION,
 			riskLevel: outcome === "REQUIRE_APPROVAL" ? "medium" : "low",
 			reasons: [
 				outcome === "DENY"

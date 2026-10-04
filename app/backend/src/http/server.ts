@@ -5,6 +5,7 @@ import { BigQuery } from "@google-cloud/bigquery";
 import apiReference from "@scalar/fastify-api-reference";
 import Fastify from "fastify";
 import { type Env, env, validateRuntimeConfiguration } from "../config/env.js";
+import { demoDisputePack } from "../domain/disputes/demo-fixtures.js";
 import { BigQueryDemoActorDirectory } from "../integrations/bigquery/bigquery-demo-actor-directory.js";
 import { createStructuredQueryRuntime } from "../integrations/bigquery/structured-rag-runtime.js";
 import { LocalBucket, type ObjectBucket } from "../integrations/bucket.js";
@@ -138,45 +139,11 @@ async function createDemoRuntime(runtimeEnv: Env): Promise<DemoRuntime> {
 	const sessions = new InMemorySessionStore();
 	const publisher = new InMemoryConversationEventPublisher();
 	const attachments = new InMemoryAttachmentStore();
-	const transactionId = "demo-transaction-1";
-	const disputeId = "demo-dispute-1";
-	const caseId = "demo-case-1";
+	const { transactionId, disputeId, caseId } = demoDisputePack.ids;
 	const disputeStore = new InMemoryDisputeSupportStore({
-		transactions: [
-			{
-				transactionId,
-				tenantId: "demo-bankai",
-				ownerUserId: "demo-customer-1",
-				status: "declined",
-				amountBucket: "medium",
-				currency: "PEN",
-				provenance: "synthetic_local_fixture",
-				version: "dispute-demo-v1",
-			},
-		],
-		disputes: [
-			{
-				disputeId,
-				transactionId,
-				tenantId: "demo-bankai",
-				ownerUserId: "demo-customer-1",
-				status: "open",
-				priority: "normal",
-				provenance: "synthetic_local_fixture",
-				version: "dispute-demo-v1",
-			},
-		],
-		cases: [
-			{
-				caseId,
-				disputeId,
-				tenantId: "demo-bankai",
-				ownerUserId: "demo-customer-1",
-				status: "open",
-				createdAt: "2026-01-01T00:00:00.000Z",
-				updatedAt: "2026-01-01T00:00:00.000Z",
-			},
-		],
+		transactions: [...demoDisputePack.transactions],
+		disputes: [...demoDisputePack.disputes],
+		cases: [...demoDisputePack.cases],
 	});
 	const demoActors = runtimeEnv.BIGQUERY_ENABLED
 		? new BigQueryDemoActorDirectory(

@@ -1227,7 +1227,15 @@
 			},
 			"DisputeCase": {
 				"type": "object",
-				"required": ["caseId", "disputeId", "status", "createdAt", "updatedAt"],
+				"required": [
+					"caseId",
+					"disputeId",
+					"status",
+					"createdAt",
+					"updatedAt",
+					"provenance",
+					"version"
+				],
 				"properties": {
 					"caseId": { "type": "string" },
 					"disputeId": { "type": "string" },
@@ -1235,7 +1243,9 @@
 						"enum": ["open", "pending_approval", "escalated", "denied"]
 					},
 					"createdAt": { "type": "string", "format": "date-time" },
-					"updatedAt": { "type": "string", "format": "date-time" }
+					"updatedAt": { "type": "string", "format": "date-time" },
+					"provenance": { "const": "synthetic_local_fixture" },
+					"version": { "const": "dispute-demo-v1" }
 				},
 				"additionalProperties": false
 			},

@@ -57,7 +57,8 @@ El modelo completo está en
 | Validar contrato de CLI | `bankai-pipeline --stage prepare --run-id local-dry-run --dry-run` | Disponible; no debe tocar fuentes externas. |
 | Ejecutar una etapa | `bankai-pipeline --stage <etapa> --run-id <id>` | Reservado: requiere implementación de etapa, autorización y credenciales. |
 | Ejecutar ciclo completo | `bankai-pipeline --stage all --run-id <id>` | Reservado: puede transferir/publicar datos y disparar artefactos. |
-| Pruebas | `python -m pytest` | Ejecutable cuando existan pruebas; actualmente el directorio define su ubicación. |
+| Inventario BQ (metadata) | `python scripts/list_bigquery_tables.py --project <id>` | Read-only; no lee filas. |
+| Baseline Fase 1 (P0-01/02/05) | `python scripts/run_phase1_baseline.py --project factored-hackathon --dataset hackathon` | Agregados sin PII; `--dry-run` lista query_ids. |
 
 Para KDD, copia `config/kdd.toml.example` a una ruta segura y ejecuta primero:
 

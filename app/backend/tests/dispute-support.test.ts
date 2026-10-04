@@ -64,6 +64,8 @@ function createService() {
 				status: "open",
 				createdAt: now,
 				updatedAt: now,
+				provenance: "synthetic_local_fixture",
+				version: "dispute-demo-v1",
 			},
 		],
 	});
