@@ -25,8 +25,11 @@ respuesta.
 La prueba de comportamiento determinista está en
 `tests/behavioral-flow.test.ts`. El proveedor regex de privacidad es solo un
 adaptador de prueba/MVP; Sensitive Data Protection debe conectarse detrás de
-`ContentPrivacyProvider` y Google Model Armor detrás de `GuardrailProvider`
-para producción.
+`ContentPrivacyProvider`. Google Model Armor ya tiene adaptador detrás de
+`GuardrailProvider` (`integrations/providers/model-armor-guardrail-provider.ts`,
+creado con `createGuardrailProvider`): cualquier `MATCH_FOUND` bloquea y
+cualquier fallo, timeout o invocación parcial es `FAILURE`/`block`. Aún falta
+el composition root que lo inyecte en `AgentControlService`.
 
 Jev se consume como decisión estructurada y versionada. Su dominio, confianza y
 route hint solo orientan el flujo; la autorización continúa en `PolicyEngine`.
