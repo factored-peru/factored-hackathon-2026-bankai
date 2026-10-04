@@ -14,6 +14,18 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
 - `gcs/`: carga privada de adjuntos por URL firmada; nunca transporta binarios
   por WebSocket ni los entrega a un modelo en el MVP.
 - `memory/`: dobles volátiles para pruebas, nunca persistencia de producción.
+- `bigquery/`: `BigQueryQueryExecutor` ejecuta entradas del catálogo como jobs
+  parametrizados, con `maximumBytesBilled`, tiempo límite, etiquetas sin
+  contenido y sin dataset por defecto. Falla con códigos cerrados y nunca
+  devuelve el mensaje del proveedor. `wrapBigQuery` adapta el cliente real; no
+  abre conexión al crearse ni al importarse. `dryRun` valida una entrada contra
+  las tablas reales sin leer filas.
+- `catalog/`: `FileQueryCatalogSource` lee el catálogo JSON de una ruta fijada
+  por configuración; la validación vive en `services/data`.
+- `identity/`: resuelve la sesión al `customer_id` bancario.
+  `StaticCustomerIdentityResolver` es un mapa fijo para demos y pruebas; los
+  vínculos los entrega quien lo construye y no se versionan. Un adaptador
+  durable (Firestore) lo sustituirá detrás del mismo puerto.
 - `tools/` y `providers/`: registros allowlisted y proveedores fail-closed.
 
 Los adaptadores no se conectan durante import-time. El composition root los
