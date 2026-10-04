@@ -78,6 +78,8 @@ bun run check
 | Contrato | `bun run spec:check` | Verifica OpenAPI sin modificar fuentes. |
 | Calidad | `bun test`, `bun run check-types`, `bun run check` | Ejecuta pruebas, tipos y Biome de sólo comprobación. |
 | Matriz de agente | `bun run agent:matrix` | Ejecuta la simulación declarada para variantes del agente. |
+| Prueba local de Structured RAG | `bun run structured:try -- --question "..."` | El JEV (TypeSafe) elige la entrada del catálogo y Vertex AI lee los parámetros; muestra la selección y los valores ligados sin ejecutar nada en BigQuery. Con `--execute --customer <id>` corre la consulta real. Envía la pregunta a proveedores externos: solo texto sintético (ADR 0010). Requiere autorización explícita y credenciales. |
+| Dry run del catálogo | `bun run catalog:dry-run` | Pide a BigQuery el plan de cada consulta del catálogo y compara columnas, tipos y bytes; no lee filas. Alcanza la nube: requiere autorización explícita, `BIGQUERY_ENABLED=true` y credenciales ADC (`gcloud auth application-default login`). |
 
 `bun run format` modifica archivos y sólo se usa cuando una tarea autorice el
 formateo. Bun documenta los [scripts](https://bun.sh/docs/runtime) y las

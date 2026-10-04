@@ -9,6 +9,7 @@ import type { QueryCatalogSource } from "../ports/retrieval.js";
 import {
 	BaseRagCatalogRepository,
 	type RagCatalogLoadResult,
+	type RagCatalogParameter,
 } from "./rag-catalog.js";
 
 function allowedFor(
@@ -16,6 +17,40 @@ function allowedFor(
 	entry: QueryCatalogEntry,
 ): boolean {
 	return entry.allowedRoles.some((role) => session.roles.includes(role));
+}
+
+/** Caller-fillable parameters only: session bindings never reach a selector. */
+function callerParameters(entry: QueryCatalogEntry): RagCatalogParameter[] {
+	const summaries: RagCatalogParameter[] = [];
+	for (const parameter of entry.parameters) {
+		if (parameter.source !== "caller") {
+			continue;
+		}
+		switch (parameter.type) {
+			case "string":
+				summaries.push({
+					name: parameter.name,
+					type: "string",
+					maxLength: parameter.maxLength,
+					...(parameter.allowedValues === undefined
+						? {}
+						: { allowedValues: parameter.allowedValues }),
+				});
+				break;
+			case "int64":
+			case "float64":
+				summaries.push({
+					name: parameter.name,
+					type: parameter.type,
+					...(parameter.min === undefined ? {} : { min: parameter.min }),
+					...(parameter.max === undefined ? {} : { max: parameter.max }),
+				});
+				break;
+			default:
+				summaries.push({ name: parameter.name, type: parameter.type });
+		}
+	}
+	return summaries;
 }
 
 /**
@@ -54,6 +89,7 @@ export class StructuredRagCatalogRepository extends BaseRagCatalogRepository {
 				version: entry.version,
 				allowedRoles: entry.allowedRoles,
 				description: entry.description,
+				parameters: callerParameters(entry),
 			}));
 		return entries.length === 0
 			? { status: "unavailable", reasonCode: "structured_catalog_no_entries" }

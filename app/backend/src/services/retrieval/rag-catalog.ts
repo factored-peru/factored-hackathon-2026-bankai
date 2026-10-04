@@ -2,12 +2,23 @@ import type { SessionContext } from "../../domain/session.js";
 
 export type RagKind = "structured" | "knowledge_graph";
 
+/** What a selector may fill in. Session-bound parameters are never listed. */
+export type RagCatalogParameter = Readonly<{
+	name: string;
+	type: "string" | "int64" | "float64" | "bool" | "date";
+	maxLength?: number;
+	allowedValues?: readonly string[];
+	min?: number;
+	max?: number;
+}>;
+
 export type RagCatalogEntry = Readonly<{
 	id: string;
 	version: string;
 	allowedRoles: readonly string[];
 	/** What the specialized judge reads to choose an entry; never SQL. */
 	description?: string;
+	parameters?: readonly RagCatalogParameter[];
 }>;
 
 export type RagCatalog = Readonly<{

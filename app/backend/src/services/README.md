@@ -43,6 +43,29 @@ columnas declaradas y comprueba el tipo de cada celda; `data/query-dry-run-check
 compara un dry run con lo que declara la entrada (mismas columnas y tipos, y
 bytes estimados dentro del tope). Ambos fallan cerrados.
 
+`retrieval/structured-rag.ts` ejecuta Structured RAG. Un `StructuredQuerySelector`
+(el juez especializado) responde `select`, `ambiguous` o `deny`; nunca SQL. Solo
+ve `id`, `version`, `description` y los parámetros que el llamador puede rellenar,
+y su elección debe ser una entrada del catálogo que se le mostró. Después
+`data/query-parameter-binder.ts` valida esos valores contra el catálogo e inyecta
+`customer_id` desde `CustomerIdentityResolver`: un llamador no puede aportar ni
+nombrar un parámetro de sesión. El resultado se convierte en `EvidenceDTO`
+(`retrieval/structured-evidence.ts`) y a `ModelEvidence` al cruzar al modelo, sin
+SQL, tablas, job ni identidad. Cada fallo es un código cerrado (`structured_*`);
+`structured_selection_ambiguous` y `structured_parameters_missing` quedan en
+`terminalReason` para que policy decida si aclarar. El selector recibe solo la
+consulta actual: un seguimiento ("¿y el mes pasado?") necesita pasar `history` a
+la recuperación, y todavía no se hace.
+
+`retrieval/structured-selection.ts` separa los dos papeles del selector:
+`StructuredEntryChooser` (el JEV elige una entrada del catálogo que se le
+mostró, o dice que ninguna sirve o que no está seguro) y
+`StructuredParameterInterpreter` (un LLM lee los parámetros de la entrada
+elegida). `ComposedStructuredQuerySelector` los une con el contrato que ya
+consume `StructuredRag`; la respuesta del juez solo se acepta si nombra una
+entrada del catálogo mostrado, y la del intérprete se descarta salvo los
+parámetros declarados con valor. Ninguno ve SQL, tablas ni datos.
+
 Los handlers de ruta viven en `control-plane/routes/` y son intercambiables.
 Los datos autorizados se desidentifican antes de generar, y el reemplazo de
 tokens se valida antes del guardrail final. La decisión y la generación usan

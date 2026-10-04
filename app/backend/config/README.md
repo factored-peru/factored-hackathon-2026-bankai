@@ -15,9 +15,24 @@ decisión de negocio.
 
 - El SQL usa los marcadores `{project}` y `{dataset}`, que el cargador resuelve
   desde configuración, así que el mismo archivo sirve para cada entorno.
-- Cada entrada declara parámetros `caller` (los valida el backend) y `session`
-  (los inyecta el backend: `customer_id`, `tenant_id`), columnas con su
-  clasificación, roles, `maxRows` y `maximumBytesBilled`.
+- Cada entrada declara parámetros `caller` (los valida el backend; todos son
+  obligatorios, porque sin `OR` un parámetro opcional no se puede expresar) y
+  `session` (los inyecta el backend: `customer_id`, `tenant_id`), columnas con
+  su clasificación, roles, `maxRows` y `maximumBytesBilled`.
+- Con `BIGQUERY_ENABLED=true` se exigen `GOOGLE_CLOUD_PROJECT`,
+  `GOOGLE_CLOUD_LOCATION` (la región del dataset, por ejemplo `us-central1`) y
+  `BIGQUERY_DATASET`; el proceso falla al arrancar si falta alguno o si un
+  nombre contiene caracteres que no sean letras, números, `_` o `-`
+  (`SVC-CORE-9006`). `STRUCTURED_CATALOG_PATH` apunta al JSON real (por defecto
+  `config/structured-catalog.json`, relativo al backend) y
+  `BIGQUERY_JOB_TIMEOUT_MS` acota cada job (máximo 60 000).
+- El selector real reparte dos papeles (ADR 0004): el JEV elige la entrada y
+  Vertex AI interpreta sus parámetros. `JEV_ENABLED` exige `JEV_BASE_URL`
+  (https), `JEV_API_KEY` y `JEV_MODEL` (`SVC-CORE-9007`); `VERTEX_AI_ENABLED`
+  exige `VERTEX_AI_PROJECT_ID`, `VERTEX_AI_LOCATION` y `VERTEX_AI_MODEL`
+  (`SVC-CORE-9008`). `JEV_MIN_CONFIDENCE` (0.7 por defecto) es el umbral bajo el
+  cual la elección se trata como ambigua; debe validarse con datos reales.
+  `JEV_API_KEY` solo entra por entorno o Secret Manager, nunca en TOML ni en Git.
 - El cargador rechaza el catálogo completo si una entrada no cumple la forma
   única permitida: un `SELECT` de una tabla del dataset configurado, columnas
   explícitas, `WHERE customer_id = @<param de sesión>` como primera condición,

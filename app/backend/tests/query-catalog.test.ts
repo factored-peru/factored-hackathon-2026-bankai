@@ -72,6 +72,16 @@ describe("query catalog entry", () => {
 		).toBe(false);
 	});
 
+	test("rejects an optional caller parameter", () => {
+		const [session, caller] = entry.parameters;
+		expect(
+			queryCatalogEntrySchema.safeParse({
+				...entry,
+				parameters: [session, { ...caller, required: false }],
+			}).success,
+		).toBe(false);
+	});
+
 	test("rejects duplicate parameter and column names", () => {
 		const [first, second] = entry.parameters;
 		expect(

@@ -14,7 +14,9 @@ const identifierSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
 const callerParameterBase = {
 	name: identifierSchema,
 	source: z.literal("caller"),
-	required: z.boolean(),
+	// The closed SQL shape has no OR, so an optional parameter cannot be
+	// expressed: every caller parameter must be supplied.
+	required: z.literal(true),
 };
 
 const callerParameterSchema = z.discriminatedUnion("type", [

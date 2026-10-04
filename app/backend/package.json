@@ -12,6 +12,8 @@
 		"format": "biome format --write .",
 		"agent:matrix": "bun scripts/agent-matrix.ts",
 		"model-armor:smoke": "bun scripts/model-armor-smoke.ts",
+		"catalog:dry-run": "bun scripts/structured-catalog-dry-run.ts",
+		"structured:try": "bun scripts/structured-rag-try.ts",
 		"spec:check": "bun run scripts/validate-openapi.ts",
 		"start": "bun src/index.ts",
 		"test": "bun test"
@@ -23,6 +25,7 @@
 		"@google-cloud/bigquery": "^9.1.0",
 		"@google-cloud/firestore": "^7.11.0",
 		"@google-cloud/storage": "^7.15.2",
+		"@google/genai": "^2.27.0",
 		"@langchain/core": "^1.1.48",
 		"@langchain/langgraph": "^1.4.18",
 		"@opentelemetry/api": "^1.9.1",
