@@ -5,6 +5,17 @@ Automatizacion local para mantener el contrato como fuente de verdad.
 - `bun run spec:check`: valida reglas SDD sobre `specs/openapi.json`.
 - `validate-openapi.ts`: implementacion del validador de contrato.
 
+## Prueba de humo de Model Armor
+
+`bun run model-armor:smoke` llama a la API real de Model Armor mediante ADC
+(`gcloud auth application-default login`); no usa API keys. Requiere
+`MODEL_ARMOR_ENABLED=true`, `MODEL_ARMOR_PROJECT_ID`, `MODEL_ARMOR_LOCATION` y
+`MODEL_ARMOR_INSPECT_TEMPLATE` en el entorno de la sesión, nunca en archivos.
+Ejecuta cinco casos (texto limpio, prompt injection, tarjeta sintética,
+respuesta limpia y template inexistente que debe fallar cerrado) e imprime solo
+veredictos, no contenido. Sale con código 1 si algún caso no coincide. Es una
+comprobación manual contra cloud, no forma parte de `bun test`.
+
 ## Matriz de comportamiento
 
 `bun run agent:matrix -- --all` ejecuta fixtures sintéticos de la cadena del

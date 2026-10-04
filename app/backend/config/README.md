@@ -14,6 +14,12 @@ variables de entorno. Los perfiles soportados son `dev`, `staging` y `prod`.
   Structured RAG, KG-RAG y recursos Google Cloud mediante ADC/IAM.
 - `MODEL_ARMOR_*`, `SDP_*`, `VERTEX_AI_*` y `JEV_*`: proveedores del control
   plane, siempre detrás de un adaptador y una política de datos.
+  Con `MODEL_ARMOR_ENABLED=true` son obligatorios `MODEL_ARMOR_PROJECT_ID`,
+  `MODEL_ARMOR_LOCATION` y `MODEL_ARMOR_INSPECT_TEMPLATE` (id del template o
+  nombre completo `projects/.../templates/...`); si falta alguno el arranque
+  falla con `SVC-CORE-9006`. El endpoint es regional y debe coincidir con la
+  ubicación del template. `MODEL_ARMOR_ENABLED=false` mantiene el guardrail
+  fail-closed. `MODEL_ARMOR_DEIDENTIFY_TEMPLATE` y `SDP_*` aún no se usan.
 - `OTEL_*`: telemetría sin contenido privado y métricas de evaluadores TypeScript.
 
 LangSmith, DeepEval, Promptfoo y DeepAgents no son dependencias ni destinos de

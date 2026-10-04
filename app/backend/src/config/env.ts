@@ -234,6 +234,17 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		);
 	}
 
+	if (
+		settings.MODEL_ARMOR_ENABLED &&
+		(settings.MODEL_ARMOR_PROJECT_ID.length === 0 ||
+			settings.MODEL_ARMOR_LOCATION.length === 0 ||
+			settings.MODEL_ARMOR_INSPECT_TEMPLATE.length === 0)
+	) {
+		throw new Error(
+			"SVC-CORE-9006: MODEL_ARMOR_PROJECT_ID, MODEL_ARMOR_LOCATION and MODEL_ARMOR_INSPECT_TEMPLATE are required when MODEL_ARMOR_ENABLED is true",
+		);
+	}
+
 	return settings;
 }
 
