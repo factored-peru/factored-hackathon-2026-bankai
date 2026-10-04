@@ -96,7 +96,9 @@ export async function createVertexGenerateText(settings: {
 			config: {
 				systemInstruction: system,
 				temperature: 0,
-				maxOutputTokens: 256,
+				// The JSON is short, but models that reason first spend output tokens
+				// on it; a small cap would truncate the answer to an empty string.
+				maxOutputTokens: 1024,
 				responseMimeType: "application/json",
 			},
 		});

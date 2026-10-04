@@ -28,13 +28,14 @@ const { values } = parseArgs({
 		role: { type: "string", default: "customer" },
 		execute: { type: "boolean", default: false },
 		"show-rows": { type: "boolean", default: false },
+		debug: { type: "boolean", default: false },
 	},
 });
 
 const question = values.question?.trim();
 if (!question) {
 	console.error(
-		'Usage: bun run structured:try -- --question "..." [--customer <id>] [--role customer] [--execute] [--show-rows]',
+		'Usage: bun run structured:try -- --question "..." [--customer <id>] [--role customer] [--execute] [--show-rows] [--debug]',
 	);
 	process.exit(2);
 }
@@ -74,10 +75,17 @@ const realSelector = await createStructuredSelector(settings).catch(
 	},
 );
 let proposal: unknown;
+let selectorError: unknown;
 const selector: StructuredQuerySelector = {
 	select: async (input) => {
-		proposal = await realSelector.select(input);
-		return proposal;
+		try {
+			proposal = await realSelector.select(input);
+			return proposal;
+		} catch (error) {
+			// Kept only so --debug can show it; StructuredRag still fails closed.
+			selectorError = error;
+			throw error;
+		}
 	},
 };
 const identity = new StaticCustomerIdentityResolver(
@@ -154,6 +162,15 @@ const result = await rag.execute({
 console.log(`Selector decision: ${JSON.stringify(proposal)}`);
 if (result.status === "failed") {
 	console.log(`Result: FAILED ${result.reasonCode}`);
+	if (values.debug && selectorError !== undefined) {
+		// Local aid only: provider errors are never logged by the backend itself.
+		// jev_* messages come from the TypeSafe adapter; anything else is from the
+		// Vertex SDK. Check it before pasting it anywhere public.
+		const error = selectorError as { name?: string; message?: string };
+		console.log(
+			`Selector error: ${error.name ?? "Error"}: ${String(error.message ?? error).slice(0, 600)}`,
+		);
+	}
 	process.exit(1);
 }
 

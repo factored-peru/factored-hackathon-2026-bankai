@@ -29,7 +29,10 @@ del selector y, por defecto, los valores que **se ejecutarían**, sin tocar
 BigQuery. Opciones: `--customer <id>` (cliente vinculado a la sesión local),
 `--role` (por defecto `customer`), `--execute` (corre la consulta real; exige
 `--customer` y `BIGQUERY_ENABLED=true`) y `--show-rows` (imprime los valores
-devueltos; sin ella solo muestra conteos y columnas).
+devueltos; sin ella solo muestra conteos y columnas) y `--debug` (si el selector
+falla, imprime el error del proveedor para distinguir el JEV, con mensajes
+`jev_*`, de Vertex; es solo una ayuda local y el backend nunca registra esos
+mensajes).
 
 La pregunta se envía a TypeSafe y a Vertex AI, que según el ADR 0010 no deben
 recibir datos personales: usa solo texto sintético. Requiere autorización
