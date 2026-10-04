@@ -115,4 +115,41 @@ describe("OpenAPI contract", () => {
 		]);
 		expect(spec.paths?.["/v1/health/live"]?.get?.security).toBeUndefined();
 	});
+
+	test("OpenAPI enumerates every HTTP route registered by the server", async () => {
+		const spec = await loadSpec();
+		const registered = [
+			"GET /openapi.json",
+			"GET /asyncapi.json",
+			"GET /v1/health/live",
+			"GET /v1/health/ready",
+			"POST /v1/items",
+			"GET /v1/items/{itemId}",
+			"POST /v1/sessions",
+			"GET /v1/transactions/{transactionId}",
+			"GET /v1/disputes/{disputeId}",
+			"GET /v1/dispute-cases/{caseId}",
+			"POST /v1/dispute-cases/{caseId}/escalations",
+			"POST /v1/approvals/{approvalId}/decisions",
+			"GET /v1/demo/actors",
+			"GET /v1/demo/fixtures",
+			"POST /v1/demo/sessions",
+			"GET /v1/me",
+			"GET /v1/conversations",
+			"GET /v1/conversations/{threadId}",
+			"POST /v1/uploads",
+			"PUT /v1/demo/uploads/{attachmentId}",
+			"POST /v1/uploads/{attachmentId}/complete",
+		];
+		const documented = Object.entries(spec.paths ?? {}).flatMap(
+			([path, item]) =>
+				Object.keys(item)
+					.filter((method) =>
+						["get", "post", "put", "patch", "delete"].includes(method),
+					)
+					.map((method) => `${method.toUpperCase()} ${path}`),
+		);
+
+		expect(documented.sort()).toEqual(registered.sort());
+	});
 });

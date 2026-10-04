@@ -28,3 +28,4 @@ otro lo reemplace parcial o totalmente.
 - 0019: estructura de monorepo y propiedad de capas.
 - 0020: pipeline offline de ingesta, KDD y publicación de grafo.
 - 0021: frontend Next.js y entrega mediante Firebase App Hosting.
+- 0022: conversación WebSocket, demo backend y trazabilidad durable.

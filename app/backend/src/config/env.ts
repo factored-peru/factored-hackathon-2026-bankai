@@ -41,8 +41,28 @@ export const envSchema = z.object({
 	DATABASE_READONLY_URL: z.string().default(""),
 	FIRESTORE_ENABLED: envBoolean.default(false),
 	BIGQUERY_ENABLED: envBoolean.default(false),
+	BIGQUERY_DATASET: z.string().default("hackathon"),
+	BIGQUERY_JOB_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.positive()
+		.max(60_000)
+		.default(30_000),
+	STRUCTURED_CATALOG_PATH: z.string().default("config/structured-catalog.json"),
 	GCS_ENABLED: envBoolean.default(false),
 	GCS_GRAPH_ARTIFACT_PREFIX: z.string().default("knowledge-graph/"),
+	CHAT_ENABLED: envBoolean.default(false),
+	REALTIME_ENABLED: envBoolean.default(false),
+	DEMO_AUTH_ENABLED: envBoolean.default(false),
+	DEMO_ACTOR_HMAC_KEY: z.string().default(""),
+	GCS_UPLOAD_BUCKET: z.string().default(""),
+	GCS_UPLOAD_PREFIX: z.string().default("conversation-uploads/"),
+	CHAT_MAX_ATTACHMENT_BYTES: z.coerce
+		.number()
+		.int()
+		.positive()
+		.default(10 * 1024 * 1024),
+	CHAT_MAX_ATTACHMENTS: z.coerce.number().int().positive().max(3).default(3),
 
 	// Google Cloud uses ADC/IAM for server-to-server calls, not an API key.
 	GOOGLE_CLOUD_PROJECT: z.string().default(""),
@@ -116,6 +136,10 @@ type TomlSettings = {
 		database_enabled?: unknown;
 		bucket_enabled?: unknown;
 		cache_enabled?: unknown;
+		demo_auth_enabled?: unknown;
+		realtime_enabled?: unknown;
+		cors_allowed_origins?: unknown;
+		session_cookie_name?: unknown;
 	};
 	profiles?: Record<string, TomlSettings>;
 };
@@ -160,6 +184,18 @@ export function flattenTomlSettings(
 		...(app.cache_enabled !== undefined
 			? { CACHE_ENABLED: app.cache_enabled }
 			: {}),
+		...(app.demo_auth_enabled !== undefined
+			? { DEMO_AUTH_ENABLED: app.demo_auth_enabled }
+			: {}),
+		...(app.realtime_enabled !== undefined
+			? { REALTIME_ENABLED: app.realtime_enabled }
+			: {}),
+		...(app.cors_allowed_origins !== undefined
+			? { CORS_ALLOWED_ORIGINS: app.cors_allowed_origins }
+			: {}),
+		...(app.session_cookie_name !== undefined
+			? { SESSION_COOKIE_NAME: app.session_cookie_name }
+			: {}),
 		...(profileApp.name !== undefined ? { APP_NAME: profileApp.name } : {}),
 		...(profileApp.env !== undefined ? { APP_ENV: profileApp.env } : {}),
 		...(profileApp.host !== undefined ? { HOST: profileApp.host } : {}),
@@ -175,6 +211,18 @@ export function flattenTomlSettings(
 			: {}),
 		...(profileApp.cache_enabled !== undefined
 			? { CACHE_ENABLED: profileApp.cache_enabled }
+			: {}),
+		...(profileApp.demo_auth_enabled !== undefined
+			? { DEMO_AUTH_ENABLED: profileApp.demo_auth_enabled }
+			: {}),
+		...(profileApp.realtime_enabled !== undefined
+			? { REALTIME_ENABLED: profileApp.realtime_enabled }
+			: {}),
+		...(profileApp.cors_allowed_origins !== undefined
+			? { CORS_ALLOWED_ORIGINS: profileApp.cors_allowed_origins }
+			: {}),
+		...(profileApp.session_cookie_name !== undefined
+			? { SESSION_COOKIE_NAME: profileApp.session_cookie_name }
 			: {}),
 	};
 }
@@ -208,6 +256,27 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		throw new Error(
 			"SVC-CORE-9002: SERVICE_TOKEN is required in staging and prod",
 		);
+	}
+
+	if (settings.DEMO_AUTH_ENABLED && settings.APP_ENV === "prod") {
+		throw new Error("SVC-CORE-9006: DEMO_AUTH_ENABLED is forbidden in prod");
+	}
+	if (
+		settings.DEMO_AUTH_ENABLED &&
+		settings.BIGQUERY_ENABLED &&
+		settings.DEMO_ACTOR_HMAC_KEY.length === 0
+	) {
+		throw new Error(
+			"SVC-CORE-9009: DEMO_ACTOR_HMAC_KEY is required with BigQuery demo actors",
+		);
+	}
+	if (settings.REALTIME_ENABLED && settings.CORS_ALLOWED_ORIGINS.length === 0) {
+		throw new Error(
+			"SVC-CORE-9007: REALTIME_ENABLED requires CORS_ALLOWED_ORIGINS",
+		);
+	}
+	if (settings.CHAT_ENABLED && !settings.FIRESTORE_ENABLED) {
+		throw new Error("SVC-CORE-9008: CHAT_ENABLED requires FIRESTORE_ENABLED");
 	}
 
 	if (settings.SESSION_STORE_ENABLED && settings.KV_URL.length === 0) {

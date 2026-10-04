@@ -14,6 +14,22 @@ El frontend no consulta BigQuery, GCS, Firestore ni Valkey directamente. Solo
 consume la API autorizada de `app/backend/` y muestra evidencia, estado de caso
 y acciones permitidas por el control plane.
 
+## Contrato de integración backend
+
+Mientras se crea el scaffold, el cliente puede implementar contra
+`../backend/specs/openapi.json` y `../backend/specs/asyncapi.json`. El flujo demo
+es `GET /v1/demo/actors` → `POST /v1/demo/sessions` → `GET /v1/me` → WebSocket
+`/v1/realtime`. El socket recibe snapshots y eventos incrementales; ante cierre,
+el cliente debe reconectar y obtener `GET /v1/conversations/{threadId}`. En
+local debe correr en el puerto 3001 y usar `credentials: "include"`; el backend
+demo corre en `localhost:3000` y documenta los aliases e IDs sintéticos en su
+README.
+
+El navegador nunca recibe `customer_id`, SQL, referencias GCS internas ni datos
+sin sanear. Las cargas de imagen/audio se realizan por la URL autorizada de
+`POST /v1/uploads`, nunca por WebSocket. Backoffice usa su alias demo y sólo
+muestra trazabilidad entregada por la API.
+
 ## Guía de invocación
 
 **Estado actual: no hay `package.json`, lockfile, código Next.js ni configuración
