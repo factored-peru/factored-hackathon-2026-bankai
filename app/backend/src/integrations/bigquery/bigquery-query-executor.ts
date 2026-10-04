@@ -55,7 +55,17 @@ function toNumber(value: string | null | undefined): number | null {
 export function wrapBigQuery(client: BigQuery): BigQueryClientLike {
 	return {
 		async createQueryJob(options) {
-			const [job] = await client.createQueryJob({ ...options });
+			// A DATE passed as a plain string is mis-bound by the client (a dry run
+			// estimated 0 bytes for a 556 MB scan), so it is wrapped explicitly.
+			const params = Object.fromEntries(
+				Object.entries(options.params).map(([name, value]) => [
+					name,
+					options.types[name] === "DATE" && typeof value === "string"
+						? client.date(value)
+						: value,
+				]),
+			);
+			const [job] = await client.createQueryJob({ ...options, params });
 			const statistics = job.metadata?.statistics;
 			return {
 				jobId: job.id ?? null,

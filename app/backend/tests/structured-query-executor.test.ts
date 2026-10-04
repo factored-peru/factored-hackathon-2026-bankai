@@ -3,6 +3,7 @@ import type { QueryCatalogEntry } from "../src/domain/data/query-catalog.js";
 import {
 	type BigQueryClientLike,
 	BigQueryQueryExecutor,
+	wrapBigQuery,
 } from "../src/integrations/bigquery/bigquery-query-executor.js";
 import { InMemoryStructuredQueryExecutor } from "../src/integrations/memory/in-memory-structured-query-executor.js";
 import { checkDryRun } from "../src/services/data/query-dry-run-check.js";
@@ -226,6 +227,80 @@ describe("BigQueryQueryExecutor", () => {
 			schema: [{ name: "transaction_id", type: "STRING" }],
 		});
 		expect(jobs[0]).toMatchObject({ dryRun: true });
+	});
+});
+
+describe("wrapBigQuery", () => {
+	// Stands in for the SDK client; only the calls the wrapper makes are modeled.
+	function sdkDouble() {
+		const received: { params: Record<string, unknown> }[] = [];
+		const client = {
+			date: (value: string) => ({ wrapped: "date", value }),
+			createQueryJob: async (options: { params: Record<string, unknown> }) => {
+				received.push(options);
+				return [
+					{
+						id: "job-1",
+						metadata: {
+							statistics: {
+								query: {
+									totalBytesProcessed: "123",
+									schema: { fields: [{ name: "a", type: "STRING" }] },
+								},
+							},
+						},
+						getQueryResults: async () => [[{ a: "x" }], null, {}],
+					},
+				];
+			},
+		};
+		return { client, received };
+	}
+
+	test("wraps DATE parameters, which the SDK mis-binds as plain strings", async () => {
+		const { client, received } = sdkDouble();
+		const wrapped = wrapBigQuery(client as never);
+
+		await wrapped.createQueryJob({
+			query: "unused",
+			params: { customer_id: "c-1", from_date: "2026-01-01", limit: 5 },
+			types: { customer_id: "STRING", from_date: "DATE", limit: "INT64" },
+			location: "us-central1",
+			maximumBytesBilled: "1",
+			jobTimeoutMs: 1000,
+			labels: {},
+			useLegacySql: false,
+		});
+
+		expect(received[0]?.params).toEqual({
+			customer_id: "c-1",
+			from_date: { wrapped: "date", value: "2026-01-01" },
+			limit: 5,
+		});
+	});
+
+	test("reports the job id, estimated bytes and output schema", async () => {
+		const { client } = sdkDouble();
+		const job = await wrapBigQuery(client as never).createQueryJob({
+			query: "unused",
+			params: {},
+			types: {},
+			location: "us-central1",
+			maximumBytesBilled: "1",
+			jobTimeoutMs: 1000,
+			labels: {},
+			useLegacySql: false,
+		});
+
+		expect(job).toMatchObject({
+			jobId: "job-1",
+			totalBytesProcessed: 123,
+			schema: [{ name: "a", type: "STRING" }],
+		});
+		expect(await job.getRows(1)).toEqual({
+			rows: [{ a: "x" }],
+			totalBytesProcessed: null,
+		});
 	});
 });
 
