@@ -8,6 +8,7 @@
 		"check": "biome check .",
 		"check-types": "tsc -p tsconfig.json --noEmit",
 		"dev": "bun --watch src/index.ts",
+		"env:prune-empty": "bun scripts/prune-empty-env.ts",
 		"format": "biome format --write .",
 		"agent:matrix": "bun scripts/agent-matrix.ts",
 		"spec:check": "bun run scripts/validate-openapi.ts",

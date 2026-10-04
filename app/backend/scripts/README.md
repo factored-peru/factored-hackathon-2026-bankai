@@ -4,6 +4,10 @@ Automatizacion local para mantener el contrato como fuente de verdad.
 
 - `bun run spec:check`: valida reglas SDD sobre `specs/openapi.json`.
 - `validate-openapi.ts`: implementacion del validador de contrato.
+- `bun run env:prune-empty`: elimina de `app/backend/.env` sólo las
+  asignaciones sin ningún carácter tras `=` y las asignaciones no vacías que
+  una ocurrencia posterior de la misma variable sustituye; muestra sólo nombres
+  eliminados, nunca valores. Debe ejecutarse desde `app/backend/`.
 
 ## Matriz de comportamiento
 
