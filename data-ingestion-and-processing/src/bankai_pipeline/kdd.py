@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import re
+import sys
 import tempfile
+import time
 import tomllib
 import warnings
 from collections.abc import Iterable, Mapping
@@ -15,15 +18,19 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import pandas as pd
+import polars as pl
 
 from bankai_pipeline.data_understanding import profile_frame
 from bankai_pipeline.dispute_contracts import TableContract, validate_schema
+from bankai_pipeline.frequent_itemsets import apriori_hybrid, eclat, itemset_keys
 
 
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,1023}$")
 PROJECT_ID = re.compile(r"^[a-z][a-z0-9-]{4,61}[a-z0-9]$")
 RUN_ID = re.compile(r"^[A-Za-z0-9_-]{8,80}$")
-ALGORITHMS = frozenset({"apriori", "fpgrowth"})
+ALGORITHMS = frozenset({"apriori", "fpgrowth", "eclat", "apriori_hybrid"})
+CONSENSUS_ALGORITHMS = frozenset({"apriori", "fpgrowth", "eclat"})
+DEFAULT_HAN_REDUNDANCY_EPSILON = 0.05
 
 
 @dataclass(frozen=True)
@@ -73,6 +80,7 @@ class KddConfig:
     min_lift: float
     max_itemset_length: int
     max_categorical_cardinality: int
+    han_redundancy_epsilon: float = DEFAULT_HAN_REDUNDANCY_EPSILON
 
 
 class BigQueryKddClient(Protocol):
@@ -139,10 +147,15 @@ def load_config(path: Path) -> KddConfig:
         raise ValueError("project or dataset identifier is invalid")
     algorithms = tuple(_require_string_list(settings, "algorithms"))
     if not algorithms or any(algorithm not in ALGORITHMS for algorithm in algorithms):
-        raise ValueError("algorithms must contain apriori and/or fpgrowth")
+        raise ValueError(
+            "algorithms must be chosen from apriori, fpgrowth, eclat, apriori_hybrid"
+        )
     max_rows = _require_positive_int(settings, "max_rows")
-    if len(algorithms) > 1 and max_rows > 100_000:
-        raise ValueError("both algorithms require max_rows <= 100000")
+    if len(algorithms) > 1 and max_rows > 5_000_000:
+        raise ValueError("multi-algorithm KDD requires max_rows <= 5000000")
+    han_epsilon = settings.get("han_redundancy_epsilon", DEFAULT_HAN_REDUNDANCY_EPSILON)
+    if not isinstance(han_epsilon, (int, float)) or han_epsilon < 0 or han_epsilon > 1:
+        raise ValueError("han_redundancy_epsilon must be in [0, 1]")
     config = KddConfig(
         project=project,
         dataset=dataset,
@@ -159,6 +172,7 @@ def load_config(path: Path) -> KddConfig:
         max_categorical_cardinality=_require_positive_int(
             settings, "max_categorical_cardinality"
         ),
+        han_redundancy_epsilon=float(han_epsilon),
     )
     if config.end_timestamp <= config.start_timestamp:
         raise ValueError("end_timestamp must be after start_timestamp")
@@ -203,29 +217,92 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
     results: dict[str, object] = {}
     lineage: list[dict[str, object]] = []
     for definition in population_definitions():
+        _progress(f"population={definition.name} assert_contract")
         _assert_contract(client, config, definition)
+        _progress(f"population={definition.name} read_bigquery")
         frame, source = _read_population(client, config, definition)
+        _progress(
+            f"population={definition.name} rows={frame.height} profile_and_encode"
+        )
+        # Profiling stays on pandas; encoding uses Polars to avoid iterrows RAM spikes.
+        profile_frame_pd = frame.to_pandas(use_pyarrow_extension_array=True)
         profile = profile_frame(
-            frame,
+            profile_frame_pd,
             primary_key=definition.primary_key,
             numeric_columns=definition.numeric_columns,
             categorical_columns=(definition.target_column, *definition.categorical_columns),
         )
+        del profile_frame_pd
+        gc.collect()
         matrix, feature_catalog = build_item_matrix(frame, definition, config)
-        rules_by_algorithm = {
-            algorithm: refine_mined_rules(
-                mine_rules(matrix, definition.target_column, algorithm, config),
+        del frame
+        gc.collect()
+        _progress(
+            f"population={definition.name} matrix_shape={matrix.shape} "
+            f"mine algorithms={list(config.algorithms)}"
+        )
+        rules_by_algorithm: dict[str, list[dict[str, object]]] = {}
+        mining_seconds: dict[str, float] = {}
+        itemset_keys_by_algorithm: dict[str, set[frozenset[Any]]] = {}
+        apriori_itemsets_for_fpmax: pd.DataFrame | None = None
+        large_matrix = len(matrix) > 100_000
+        for algorithm in config.algorithms:
+            started = time.perf_counter()
+            _progress(f"population={definition.name} algorithm={algorithm} start")
+            if (
+                large_matrix
+                and algorithm == "apriori_hybrid"
+                and "apriori" in rules_by_algorithm
+            ):
+                # Apriori already used the vertical TID backend on large matrices.
+                itemset_keys_by_algorithm[algorithm] = set(
+                    itemset_keys_by_algorithm["apriori"]
+                )
+                rules_by_algorithm[algorithm] = list(rules_by_algorithm["apriori"])
+                mining_seconds[algorithm] = 0.0
+                _progress(
+                    f"population={definition.name} algorithm={algorithm} "
+                    "reused_vertical_apriori"
+                )
+                continue
+            itemsets = mine_frequent_itemsets(matrix, algorithm, config)
+            itemset_keys_by_algorithm[algorithm] = itemset_keys(itemsets)
+            rules_by_algorithm[algorithm] = refine_mined_rules(
+                rules_from_itemsets(itemsets, definition.target_column, config),
                 definition,
+                epsilon=config.han_redundancy_epsilon,
             )
-            for algorithm in config.algorithms
+            if algorithm == "apriori" and not large_matrix:
+                apriori_itemsets_for_fpmax = itemsets
+            else:
+                del itemsets
+            mining_seconds[algorithm] = round(time.perf_counter() - started, 6)
+            _progress(
+                f"population={definition.name} algorithm={algorithm} "
+                f"seconds={mining_seconds[algorithm]} "
+                f"rules={len(rules_by_algorithm[algorithm])}"
+            )
+            gc.collect()
+        hybrid_parity = _assert_hybrid_apriori_parity_keys(itemset_keys_by_algorithm)
+        diagnostics = {
+            "mining_seconds": mining_seconds,
+            "hybrid_apriori_parity": hybrid_parity,
+            "apriori_backend": _apriori_backend_name(len(matrix)),
+            **fpmax_diagnostics(matrix, apriori_itemsets_for_fpmax, config),
         }
         results[definition.name] = {
             "quality_profile": profile,
             "feature_catalog": feature_catalog,
             "rules": rules_by_algorithm,
             "comparison": compare_rule_sets(rules_by_algorithm),
+            "diagnostics": diagnostics,
         }
         lineage.append(source)
+        del matrix
+        del itemset_keys_by_algorithm
+        del apriori_itemsets_for_fpmax
+        gc.collect()
+        _progress(f"population={definition.name} complete")
     manifest = {
         "run_id": run_id,
         "kdd_version": "v1",
@@ -233,9 +310,137 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
         "lineage": lineage,
         "populations": list(results),
         "graph_compilation": "not_requested",
+        "consensus_algorithms": sorted(CONSENSUS_ALGORITHMS),
     }
     write_artifacts(config.output_dir / run_id, manifest, results)
+    _progress(f"run_id={run_id} artifacts_written")
     return manifest
+
+
+def mine_frequent_itemsets(
+    matrix: pd.DataFrame, algorithm: str, config: KddConfig
+) -> pd.DataFrame:
+    if matrix.empty:
+        return pd.DataFrame(columns=["support", "itemsets"])
+    from mlxtend.frequent_patterns import apriori, fpgrowth
+
+    # mlxtend's horizontal Apriori materializes large candidate matrices and OOMs
+    # around multi-million rows; the vertical TID backend yields the same itemsets.
+    if algorithm == "apriori" and len(matrix) > 100_000:
+        miner = apriori_hybrid
+    else:
+        miners = {
+            "apriori": apriori,
+            "fpgrowth": fpgrowth,
+            "eclat": eclat,
+            "apriori_hybrid": apriori_hybrid,
+        }
+        miner = miners[algorithm]
+    return miner(
+        matrix,
+        min_support=config.min_support,
+        use_colnames=True,
+        max_len=config.max_itemset_length,
+    )
+
+
+def _apriori_backend_name(row_count: int) -> str:
+    return "vertical_tid" if row_count > 100_000 else "mlxtend_apriori"
+
+
+def rules_from_itemsets(
+    itemsets: pd.DataFrame, target_column: str, config: KddConfig
+) -> list[dict[str, object]]:
+    if itemsets.empty:
+        return []
+    from mlxtend.frequent_patterns import association_rules
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        rules = association_rules(
+            itemsets,
+            metric="confidence",
+            min_threshold=config.min_confidence,
+        )
+    if rules.empty:
+        return []
+    target_prefix = f"{target_column}="
+    selected = rules[
+        (rules["lift"] >= config.min_lift)
+        & (rules["consequents"].map(lambda values: len(values) == 1))
+        & (rules["consequents"].map(lambda values: next(iter(values)).startswith(target_prefix)))
+        & (~rules["antecedents"].map(lambda values: any(item.startswith(target_prefix) for item in values)))
+    ]
+    output = []
+    for _, rule in selected.sort_values(["lift", "confidence", "support"], ascending=False).iterrows():
+        output.append(
+            {
+                "antecedents": sorted(rule["antecedents"]),
+                "consequent": next(iter(rule["consequents"])),
+                "support": round(float(rule["support"]), 6),
+                "confidence": round(float(rule["confidence"]), 6),
+                "lift": round(float(rule["lift"]), 6),
+            }
+        )
+    return output
+
+
+def fpmax_diagnostics(
+    matrix: pd.DataFrame, apriori_itemsets: pd.DataFrame | None, config: KddConfig
+) -> dict[str, object]:
+    if matrix.empty:
+        return {
+            "fpmax_maximal_itemset_count": 0,
+            "fpmax_overlap_with_apriori_itemsets": 0,
+        }
+    if len(matrix) > 100_000:
+        return {
+            "fpmax_maximal_itemset_count": None,
+            "fpmax_overlap_with_apriori_itemsets": None,
+            "fpmax_skipped": "row_count_gt_100000",
+        }
+    from mlxtend.frequent_patterns import fpmax
+
+    maximal = fpmax(
+        matrix,
+        min_support=config.min_support,
+        use_colnames=True,
+        max_len=config.max_itemset_length,
+    )
+    maximal_keys = itemset_keys(maximal)
+    apriori_keys = itemset_keys(apriori_itemsets) if apriori_itemsets is not None else set()
+    return {
+        "fpmax_maximal_itemset_count": len(maximal_keys),
+        "fpmax_overlap_with_apriori_itemsets": len(maximal_keys & apriori_keys),
+    }
+
+
+def _assert_hybrid_apriori_parity(
+    itemsets_by_algorithm: Mapping[str, pd.DataFrame],
+) -> dict[str, object]:
+    if "apriori" not in itemsets_by_algorithm or "apriori_hybrid" not in itemsets_by_algorithm:
+        return {"checked": False, "equal": None}
+    return _assert_hybrid_apriori_parity_keys(
+        {
+            "apriori": itemset_keys(itemsets_by_algorithm["apriori"]),
+            "apriori_hybrid": itemset_keys(itemsets_by_algorithm["apriori_hybrid"]),
+        }
+    )
+
+
+def _assert_hybrid_apriori_parity_keys(
+    itemset_keys_by_algorithm: Mapping[str, set[frozenset[Any]]],
+) -> dict[str, object]:
+    if "apriori" not in itemset_keys_by_algorithm or "apriori_hybrid" not in itemset_keys_by_algorithm:
+        return {"checked": False, "equal": None}
+    left = itemset_keys_by_algorithm["apriori"]
+    right = itemset_keys_by_algorithm["apriori_hybrid"]
+    if left != right:
+        raise ValueError(
+            "apriori_hybrid itemsets diverged from apriori; "
+            f"only_apriori={len(left - right)} only_hybrid={len(right - left)}"
+        )
+    return {"checked": True, "equal": True, "itemset_count": len(left)}
 
 
 def _assert_contract(
@@ -257,7 +462,7 @@ def _assert_contract(
 
 def _read_population(
     client: BigQueryKddClient, config: KddConfig, definition: PopulationDefinition
-) -> tuple[pd.DataFrame, dict[str, object]]:
+) -> tuple[pl.DataFrame, dict[str, object]]:
     from google.cloud import bigquery
 
     table = _table_ref(config, definition.table)
@@ -287,7 +492,17 @@ LIMIT @max_rows
         labels={"component": "kdd", "population": definition.name},
     )
     job = client.query(query, job_config=job_config)
-    frame = job.result().to_dataframe()
+    _progress(
+        f"population={definition.name} bigquery_job={job.job_id} "
+        "download_arrow_bqstorage"
+    )
+    # Prefer BigQuery Storage API (gRPC/Arrow) over REST page fetches.
+    arrow_table = job.result().to_arrow(create_bqstorage_client=True)
+    frame = pl.from_arrow(arrow_table)
+    _progress(
+        f"population={definition.name} arrow_rows={frame.height} "
+        f"download_complete bytes_processed={int(job.total_bytes_processed or 0)}"
+    )
     return frame, {
         "population": definition.name,
         "table": f"{config.dataset}.{definition.table}",
@@ -295,22 +510,22 @@ LIMIT @max_rows
         "query_hash": hashlib.sha256(query.encode("utf-8")).hexdigest(),
         "job_id": job.job_id,
         "total_bytes_processed": int(job.total_bytes_processed or 0),
-        "row_count": int(len(frame)),
+        "row_count": int(frame.height),
     }
 
 
 def build_item_matrix(
-    frame: pd.DataFrame, definition: PopulationDefinition, config: KddConfig
+    frame: pl.DataFrame | pd.DataFrame, definition: PopulationDefinition, config: KddConfig
 ) -> tuple[pd.DataFrame, dict[str, object]]:
-    items: list[list[str]] = []
+    """Build a boolean item matrix with Polars; return pandas for mlxtend miners."""
+    table = pl.from_pandas(frame) if isinstance(frame, pd.DataFrame) else frame
     catalog: dict[str, object] = {"target": definition.target_column, "features": []}
     categorical = (definition.target_column, *definition.categorical_columns)
     permitted = [definition.target_column]
-    permitted.extend(
-        column
-        for column in definition.categorical_columns
-        if frame[column].nunique(dropna=True) <= config.max_categorical_cardinality
-    )
+    for column in definition.categorical_columns:
+        cardinality = table.select(pl.col(column).drop_nulls().n_unique()).item()
+        if cardinality <= config.max_categorical_cardinality:
+            permitted.append(column)
     excluded = sorted(set(categorical) - set(permitted))
     boolean_columns = tuple(
         column
@@ -325,28 +540,58 @@ def build_item_matrix(
     leakage_excluded = sorted(
         {*definition.target_leakage_booleans, *definition.target_leakage_numerics}
     )
-    numeric_bounds = {
-        column: _numeric_bounds(frame[column]) for column in numeric_columns
-    }
-    for _, row in frame.iterrows():
-        record = [_categorical_item(column, row[column]) for column in permitted]
-        for column in boolean_columns:
-            record.append(_boolean_item(column, row[column]))
-        for column in numeric_columns:
-            record.extend(
-                _numeric_items(
-                    column,
-                    row[column],
-                    numeric_bounds[column],
-                    emit_non_negative_sign=column
-                    not in definition.non_negative_numeric_columns,
-                )
-            )
-        items.append(record)
-    from mlxtend.preprocessing import TransactionEncoder
 
-    encoder = TransactionEncoder()
-    matrix = pd.DataFrame(encoder.fit(items).transform(items), columns=encoder.columns_)
+    item_expressions: list[pl.Expr] = []
+    for column in permitted:
+        sanitized = _sanitize_categorical_expr(column)
+        values = (
+            table.select(sanitized.alias("__value"))
+            .get_column("__value")
+            .unique(maintain_order=True)
+            .to_list()
+        )
+        for value in values:
+            item_expressions.append(
+                (sanitized == pl.lit(value)).alias(f"{column}={value}")
+            )
+    for column in boolean_columns:
+        missing = pl.col(column).is_null()
+        truthy = pl.col(column).fill_null(False).cast(pl.Boolean)
+        item_expressions.extend(
+            [
+                missing.alias(f"{column}=UNKNOWN"),
+                ((~missing) & truthy).alias(f"{column}=TRUE"),
+                ((~missing) & (~truthy)).alias(f"{column}=FALSE"),
+            ]
+        )
+    for column in numeric_columns:
+        bounds = _numeric_bounds_polars(table.get_column(column))
+        item_expressions.extend(
+            _numeric_item_expressions(
+                column,
+                bounds,
+                emit_non_negative_sign=column
+                not in definition.non_negative_numeric_columns,
+            )
+        )
+
+    if not item_expressions:
+        matrix = pd.DataFrame(index=range(table.height))
+    else:
+        encoded = table.select(item_expressions)
+        # Drop all-false columns (e.g. unused boolean UNKNOWN).
+        keep = [
+            name
+            for name in encoded.columns
+            if encoded.select(pl.col(name).any()).item()
+        ]
+        matrix = (
+            encoded.select(keep).to_pandas(use_pyarrow_extension_array=False)
+            if keep
+            else pd.DataFrame(index=range(table.height))
+        )
+        matrix = matrix.astype(bool)
+
     catalog["features"] = sorted(matrix.columns.tolist())
     catalog["excluded_high_cardinality_columns"] = excluded
     catalog["excluded_target_leakage_columns"] = leakage_excluded
@@ -360,51 +605,18 @@ def build_item_matrix(
 def mine_rules(
     matrix: pd.DataFrame, target_column: str, algorithm: str, config: KddConfig
 ) -> list[dict[str, object]]:
-    if matrix.empty:
-        return []
-    from mlxtend.frequent_patterns import apriori, association_rules, fpgrowth
-
-    miner = apriori if algorithm == "apriori" else fpgrowth
-    itemsets = miner(
-        matrix,
-        min_support=config.min_support,
-        use_colnames=True,
-        max_len=config.max_itemset_length,
+    return rules_from_itemsets(
+        mine_frequent_itemsets(matrix, algorithm, config), target_column, config
     )
-    if itemsets.empty:
-        return []
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        rules = association_rules(
-            itemsets,
-            metric="confidence",
-            min_threshold=config.min_confidence,
-        )
-    target_prefix = f"{target_column}="
-    selected = rules[
-        (rules["lift"] >= config.min_lift)
-        & (rules["consequents"].map(lambda values: len(values) == 1))
-        & (rules["consequents"].map(lambda values: next(iter(values)).startswith(target_prefix)))
-        & (~rules["antecedents"].map(lambda values: any(item.startswith(target_prefix) for item in values)))
-    ]
-    output = []
-    for _, rule in selected.sort_values(["lift", "confidence", "support"], ascending=False).iterrows():
-        output.append(
-            {
-                "antecedents": sorted(rule["antecedents"]),
-                "consequent": next(iter(rule["consequents"])),
-                "support": round(float(rule["support"]), 6),
-                "confidence": round(float(rule["confidence"]), 6),
-                "lift": round(float(rule["lift"]), 6),
-            }
-        )
-    return output
 
 
 def refine_mined_rules(
-    rules: list[dict[str, object]], definition: PopulationDefinition
+    rules: list[dict[str, object]],
+    definition: PopulationDefinition,
+    *,
+    epsilon: float = DEFAULT_HAN_REDUNDANCY_EPSILON,
 ) -> list[dict[str, object]]:
-    """Drop MultiLevel tautologies and strict-superset redundant rules."""
+    """Drop MultiLevel tautologies, Han-redundant descendants, and supersets."""
     without_hierarchy = [
         rule
         for rule in rules
@@ -412,7 +624,10 @@ def refine_mined_rules(
             list(rule["antecedents"]), definition.hierarchical_pairs
         )
     ]
-    return deduplicate_redundant_rules(without_hierarchy)
+    without_han = drop_han_redundant_rules(
+        without_hierarchy, definition.hierarchical_pairs, epsilon=epsilon
+    )
+    return deduplicate_redundant_rules(without_han)
 
 
 def _has_hierarchical_cooccurrence(
@@ -420,6 +635,90 @@ def _has_hierarchical_cooccurrence(
 ) -> bool:
     features = {item.split("=", 1)[0] for item in antecedents}
     return any(ancestor in features and descendant in features for ancestor, descendant in pairs)
+
+
+def drop_han_redundant_rules(
+    rules: list[dict[str, object]],
+    hierarchical_pairs: tuple[tuple[str, str], ...],
+    *,
+    epsilon: float = DEFAULT_HAN_REDUNDANCY_EPSILON,
+) -> list[dict[str, object]]:
+    """Remove descendant rules whose confidence matches an ancestor within epsilon."""
+    if not hierarchical_pairs:
+        return list(rules)
+    ranked = sorted(
+        rules,
+        key=lambda rule: (
+            str(rule["consequent"]),
+            len(list(rule["antecedents"])),
+            tuple(rule["antecedents"]),
+        ),
+    )
+    kept: list[dict[str, object]] = []
+    for candidate in ranked:
+        redundant = False
+        for ancestor in kept:
+            if ancestor["consequent"] != candidate["consequent"]:
+                continue
+            if not _is_han_descendant_antecedent(
+                list(ancestor["antecedents"]),
+                list(candidate["antecedents"]),
+                hierarchical_pairs,
+            ):
+                continue
+            if abs(float(candidate["confidence"]) - float(ancestor["confidence"])) <= epsilon:
+                redundant = True
+                break
+        if not redundant:
+            kept.append(candidate)
+    return sorted(
+        kept,
+        key=lambda rule: (
+            -float(rule["lift"]),
+            -float(rule["confidence"]),
+            -float(rule["support"]),
+            tuple(rule["antecedents"]),
+            str(rule["consequent"]),
+        ),
+    )
+
+
+def _is_han_descendant_antecedent(
+    ancestor_items: list[str],
+    descendant_items: list[str],
+    hierarchical_pairs: tuple[tuple[str, str], ...],
+) -> bool:
+    """True when every ancestor item equals or generalizes a distinct descendant item."""
+    if len(ancestor_items) != len(descendant_items):
+        return False
+    if set(ancestor_items) == set(descendant_items):
+        return False
+    remaining = list(descendant_items)
+    for ancestor_item in ancestor_items:
+        match_index = None
+        for index, descendant_item in enumerate(remaining):
+            if _item_equals_or_generalizes(ancestor_item, descendant_item, hierarchical_pairs):
+                match_index = index
+                break
+        if match_index is None:
+            return False
+        remaining.pop(match_index)
+    return True
+
+
+def _item_equals_or_generalizes(
+    ancestor_item: str,
+    descendant_item: str,
+    hierarchical_pairs: tuple[tuple[str, str], ...],
+) -> bool:
+    if ancestor_item == descendant_item:
+        return True
+    ancestor_feature, ancestor_value = ancestor_item.split("=", 1)
+    descendant_feature, _descendant_value = descendant_item.split("=", 1)
+    for parent, child in hierarchical_pairs:
+        if ancestor_feature == parent and descendant_feature == child:
+            return True
+    return False
 
 
 def deduplicate_redundant_rules(
@@ -471,17 +770,33 @@ def deduplicate_redundant_rules(
 def compare_rule_sets(
     rules_by_algorithm: Mapping[str, list[dict[str, object]]]
 ) -> dict[str, object]:
-    if set(rules_by_algorithm) != {"apriori", "fpgrowth"}:
-        return {"comparison": "not_requested"}
-    left = {_rule_key(rule) for rule in rules_by_algorithm["apriori"]}
-    right = {_rule_key(rule) for rule in rules_by_algorithm["fpgrowth"]}
-    union = left | right
+    consensus = sorted(algorithm for algorithm in rules_by_algorithm if algorithm in CONSENSUS_ALGORITHMS)
+    if set(consensus) != CONSENSUS_ALGORITHMS:
+        return {"comparison": "not_requested", "present": sorted(rules_by_algorithm)}
+    keyed = {
+        algorithm: {_rule_key(rule) for rule in rules_by_algorithm[algorithm]}
+        for algorithm in consensus
+    }
+    shared = set.intersection(*(keyed[algorithm] for algorithm in consensus))
+    pairwise: dict[str, object] = {}
+    for left, right in (("apriori", "fpgrowth"), ("apriori", "eclat"), ("fpgrowth", "eclat")):
+        union = keyed[left] | keyed[right]
+        pairwise[f"{left}_vs_{right}"] = {
+            "shared_rule_count": len(keyed[left] & keyed[right]),
+            "jaccard": round(len(keyed[left] & keyed[right]) / len(union), 6) if union else 1.0,
+        }
     return {
-        "comparison": "apriori_vs_fpgrowth",
-        "apriori_rule_count": len(left),
-        "fpgrowth_rule_count": len(right),
-        "shared_rule_count": len(left & right),
-        "jaccard": round(len(left & right) / len(union), 6) if union else 1.0,
+        "comparison": "apriori_fpgrowth_eclat",
+        "rule_counts": {algorithm: len(keyed[algorithm]) for algorithm in consensus},
+        "shared_rule_count": len(shared),
+        "triple_jaccard": round(
+            len(shared) / len(set.union(*(keyed[algorithm] for algorithm in consensus))),
+            6,
+        )
+        if any(keyed.values())
+        else 1.0,
+        "pairwise": pairwise,
+        "hybrid_present": "apriori_hybrid" in rules_by_algorithm,
     }
 
 
@@ -502,10 +817,41 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     temporary_path.replace(path)
 
 
+def _progress(message: str) -> None:
+    rss_kb = _rss_kb()
+    rss = f" rss_mb={rss_kb / 1024:.1f}" if rss_kb is not None else ""
+    print(f"[kdd] {message}{rss}", file=sys.stderr, flush=True)
+
+
+def _rss_kb() -> int | None:
+    try:
+        with open("/proc/self/status", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except OSError:
+        return None
+    return None
+
+
 def _table_ref(config: KddConfig, table: str) -> str:
     if not IDENTIFIER.fullmatch(table):
         raise ValueError("table identifier is invalid")
     return f"{config.project}.{config.dataset}.{table}"
+
+
+def _sanitize_categorical_expr(column: str) -> pl.Expr:
+    raw = (
+        pl.when(pl.col(column).is_null())
+        .then(pl.lit("UNKNOWN"))
+        .otherwise(pl.col(column).cast(pl.Utf8).str.strip_chars().str.to_uppercase())
+    )
+    sanitized = raw.str.replace_all(r"[^A-Z0-9_.-]", "_").str.slice(0, 64)
+    return (
+        pl.when(sanitized.is_null() | (sanitized == ""))
+        .then(pl.lit("UNKNOWN"))
+        .otherwise(sanitized)
+    )
 
 
 def _categorical_item(column: str, value: object) -> str:
@@ -525,6 +871,50 @@ def _numeric_bounds(population: pd.Series) -> tuple[float, float, float] | None:
     if values.empty:
         return None
     return tuple(float(values.quantile(level)) for level in (0.50, 0.90, 0.99))
+
+
+def _numeric_bounds_polars(population: pl.Series) -> tuple[float, float, float] | None:
+    values = population.cast(pl.Float64, strict=False).drop_nulls().abs()
+    if values.is_empty():
+        return None
+    return tuple(float(values.quantile(level)) for level in (0.50, 0.90, 0.99))
+
+
+def _numeric_item_expressions(
+    column: str,
+    bounds: tuple[float, float, float] | None,
+    *,
+    emit_non_negative_sign: bool = True,
+) -> list[pl.Expr]:
+    numeric = pl.col(column).cast(pl.Float64, strict=False)
+    missing = numeric.is_null()
+    expressions: list[pl.Expr] = [missing.alias(f"{column}=MISSING")]
+    if bounds is None:
+        expressions.append((~missing).alias(f"{column}=PRESENT"))
+        return expressions
+    q50, q90, q99 = bounds
+    absolute = numeric.abs()
+    bucket = (
+        pl.when(missing)
+        .then(pl.lit(None, dtype=pl.Utf8))
+        .when(absolute <= q50)
+        .then(pl.lit("LOW"))
+        .when(absolute <= q90)
+        .then(pl.lit("MEDIUM"))
+        .when(absolute <= q99)
+        .then(pl.lit("HIGH"))
+        .otherwise(pl.lit("EXTREME"))
+    )
+    for label in ("LOW", "MEDIUM", "HIGH", "EXTREME"):
+        expressions.append(
+            (bucket == label).fill_null(False).alias(f"{column}_bucket={label}")
+        )
+    expressions.append(((~missing) & (numeric < 0)).alias(f"{column}_sign=NEGATIVE"))
+    if emit_non_negative_sign:
+        expressions.append(
+            ((~missing) & (numeric >= 0)).alias(f"{column}_sign=NON_NEGATIVE")
+        )
+    return expressions
 
 
 def _numeric_items(

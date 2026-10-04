@@ -10,7 +10,7 @@ endpoints ni participa en peticiones de usuario. La decisión normativa de stack
 2. [`docs/phase1-problem-baseline-20261004.md`](docs/phase1-problem-baseline-20261004.md) — evidencia cuantitativa P0-01/02/05.
 3. [`docs/kdd-dispute-transaction-support.md`](docs/kdd-dispute-transaction-support.md) — KDD, papers y run endurecido.
 4. [`docs/futour-knowledge-graph-lessons.md`](docs/futour-knowledge-graph-lessons.md) — Apriori / FP-Growth / MultiLevel / FuTour.
-5. [`docs/kg-rag-validation-20261004.md`](docs/kg-rag-validation-20261004.md) — artefacto KG local validado.
+5. [`docs/kg-rag-validation-20261004.md`](docs/kg-rag-validation-20261004.md) — artefacto KG local multi-algoritmo.
 6. [`docs/prioritized-dispute-case-catalog.md`](docs/prioritized-dispute-case-catalog.md) — C1–C8 y bloqueos.
 
 ## Responsabilidades
@@ -75,13 +75,14 @@ Para KDD, copia `config/kdd.toml.example` a una ruta segura y ejecuta primero:
 bankai-pipeline --stage kdd --run-id kdd-local-20261003 --kdd-config /ruta/kdd.toml --dry-run
 ```
 
-La implementación compara Apriori y FP-Growth sobre transacciones y reclamos
-por separado. Su propuesta, límites y artefactos se documentan en
+La implementación compara Apriori, FP-Growth y Eclat (consenso del grafo) más
+AprioriHybrid (paridad con Apriori) sobre transacciones y reclamos por
+separado. Su propuesta, límites y artefactos se documentan en
 `docs/kdd-dispute-transaction-support.md`. La etapa local `compile-graph`
-materializa sólo las reglas coincidentes entre ambos algoritmos y la ontología
-agregada `Population`, `Feature`, `FeatureValue`, `Target`, `Rule`, `Case` y
-`ModelRun`; no crea entidades individuales de cliente, cuenta, comercio o
-disputa.
+materializa sólo las reglas coincidentes entre los tres consensuadores y la
+ontología agregada `Population`, `Feature`, `FeatureValue`, `Target`, `Rule`,
+`Case` y `ModelRun`; no crea entidades individuales de cliente, cuenta,
+comercio o disputa.
 
 ```bash
 bankai-pipeline --stage compile-graph --run-id graph-local-20261003 \

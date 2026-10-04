@@ -5,12 +5,14 @@ description = "Offline ingestion, KDD and knowledge-graph pipeline for Bankai"
 requires-python = ">=3.12"
 dependencies = [
   "google-cloud-bigquery",
+  "google-cloud-bigquery-storage",
   "db-dtypes",
   "google-cloud-storage",
   "mlxtend",
   "msgpack",
   "networkx",
   "pandas",
+  "polars",
   "pyarrow",
   "scikit-learn",
 ]

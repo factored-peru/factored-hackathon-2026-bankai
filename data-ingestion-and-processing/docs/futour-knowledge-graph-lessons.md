@@ -19,10 +19,11 @@ de grafo.
 | --- | --- | --- | --- |
 | Naive Bayes suavizado | Calcula `P(arquetipo | evidencia)` con prior y condicionales Laplace/Dirichlet; usa logaritmos y normalización. | Baseline para C1 (SLA), C3 (señal de fraude), C4 (escalamiento) o C5 (satisfacción), siempre con un objetivo propio. | No infiere causalidad, responsabilidad ni resultado legal; requiere corte temporal, calibración y evaluación antes de cualquier uso. |
 | Apriori | Mina `antecedente → categoría` con soporte, confianza y lift; usa poda antimonótona y máximo de tres ítems de antecedente. | Descubrir hipótesis de cohortes en KDD, separadas de un modelo predictivo. | Una regla no es una predicción individual ni una autorización. |
-| AprioriTid / AprioriHybrid | El paper P487 propone representar candidatos intermedios por TID para reducir escaneos y un híbrido que cambia de estrategia al resultar más eficiente. | Alternativa de minería futura si el volumen o número de candidatos supera los límites de Apriori. | No se implementa ahora: el KDD actual compara Apriori y FP-Growth con límites de filas y cardinalidad. |
+| AprioriTid / AprioriHybrid | El paper P487 propone representar candidatos intermedios por TID para reducir escaneos y un híbrido que cambia de estrategia al resultar más eficiente. | Bankai ejecuta `apriori_hybrid` como control: debe producir los mismos itemsets que Apriori; se registra tiempo/paridad y no vota en el grafo. | No es un cuarto consensuador. Si diverge de Apriori, el run falla. |
 | FP-Growth | Construye un FP-tree comprimido y mina bases condicionales mediante crecimiento de fragmentos; evita generar el conjunto completo de candidatos. | Ya es la alternativa escalable incluida en el KDD actual y es el candidato preferible cuando aumentan los candidatos, la longitud de patrones o la dispersión. | Comparar el mismo dataset, umbrales y objetivos; registrar tiempo, memoria, itemsets y concordancia de reglas; no mezclar sus métricas con Bayes. |
+| Eclat | Mina itemsets frecuentes con TID-lists verticales e intersección (Zaki). | Tercer consensuador del grafo: mismas métricas asociativas, estrategia de búsqueda distinta. | Debe compararse bajo la misma matriz y umbrales; no sustituye a Apriori como baseline auditable. |
 | Grafo materializado | FuTour representa aristas Bayes `arquetipo → feature:valor` y nodos/reglas Apriori hacia una categoría de servicio. | Patrón futuro para provenance, catálogos y relaciones normalizadas. | No es un algoritmo de inferencia independiente ni evidencia factual; no contiene PII ni texto crudo. |
-| K2 / redes Bayesianas | K2 aprende un DAG dada una ordenación de variables y límite de padres, con score Bayesiano. | Posible investigación futura si existe muestra suficiente, semántica temporal y una pregunta estructural explícita. | No usar con los 50 perfiles de FuTour ni asumir causalidad. Para disputas exige una ADR de variables, orden y validación. |
+| K2 / redes Bayesianas | K2 aprende un DAG dada una ordenación de variables y límite de padres, con score Bayesiano. | Posible investigación futura si existe muestra suficiente, semántica temporal y una pregunta estructural explícita. | No usar con los 50 perfiles de FuTour ni asumir causalidad. Para disputas exige una ADR de variables, orden y validación. No forma parte del consenso asociativo del grafo. |
 | Taxonomía multinivel | Normaliza servicios narrativos en categorías antes de minar; evita reglas tautológicas y redundancia jerárquica. | Normalizar `case_type`, `category`, `subcategory` y futuros motivos de disputa antes de KDD. | La taxonomía debe ser versionada y revisada por negocio; no inferida solo por un LLM. |
 
 ## Información útil de actividades, papers y reporte
@@ -62,18 +63,27 @@ deben utilizarse como base del pipeline Bankai. Las pruebas actuales de
 FuTour comprueban fórmulas y estabilidad de respuesta, pero no incluyen split
 temporal, calibración, evaluación out-of-sample ni protección de datos.
 
-## Criterio operativo para FP-Growth
+## Criterio operativo para FP-Growth, Eclat y Hybrid
 
-FP-Growth no cambia la semántica de las reglas: soporte, confianza y lift se
-calculan sobre la misma población e itemsets que Apriori. Cambia el modo de
-encontrar los patrones frecuentes. Por ello, la iteración KDD debe conservar
-ambos algoritmos mientras el límite de 100,000 filas permita la comparación.
+FP-Growth y Eclat no cambian la semántica de las reglas: soporte, confianza y
+lift se calculan sobre la misma población e itemsets que Apriori. Cambian el
+modo de encontrar los patrones frecuentes. Por ello la iteración KDD conserva
+Apriori, FP-Growth y Eclat mientras el límite de 100,000 filas permita la
+comparación, y el grafo exige la intersección de los tres con métricas idénticas.
 
-Se preferirá FP-Growth en una ejecución posterior solo si, con la misma
-ventana, columnas, exclusiones y umbrales, mantiene o mejora la concordancia de
-reglas relevantes y reduce el costo de cómputo. Diferencias de reglas obligan
-a revisar transformación, orden de categorías y parámetros; no se interpretan
-como evidencia de negocio. Apriori seguirá siendo útil como baseline auditable.
+AprioriHybrid (P487) combina pases horizontales con conteo por TID cuando el
+tamaño estimado de candidatos cabe en memoria y el número de itemsets grandes
+decrece. Debe coincidir con Apriori; sirve para medir rendimiento, no para un
+voto adicional. `fpmax` se registra sólo como diagnóstico de itemsets maximales
+y no alimenta `association_rules` ni el grafo.
+
+Se preferirá FP-Growth u otra estrategia de búsqueda en una ejecución posterior
+solo si, con la misma ventana, columnas, exclusiones y umbrales, mantiene o
+mejora la concordancia de reglas relevantes y reduce el costo de cómputo.
+Diferencias de reglas obligan a revisar transformación, orden de categorías y
+parámetros; no se interpretan como evidencia de negocio. Apriori seguirá siendo
+útil como baseline auditable. K2 permanece fuera hasta una ADR de variables y
+orden. No se cruza complaints con transactions sin join canónico (C6).
 
 ## Decisiones pendientes de ADR
 

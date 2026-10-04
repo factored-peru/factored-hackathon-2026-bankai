@@ -5,12 +5,15 @@ import unittest
 
 import pandas as pd
 
+from bankai_pipeline.frequent_itemsets import apriori_hybrid, eclat, itemset_keys
 from bankai_pipeline.kdd import (
     KddConfig,
     build_item_matrix,
     compare_rule_sets,
     deduplicate_redundant_rules,
+    drop_han_redundant_rules,
     dry_run_plan,
+    mine_frequent_itemsets,
     mine_rules,
     population_definitions,
     refine_mined_rules,
@@ -26,7 +29,7 @@ def config(*, max_categorical_cardinality: int = 100) -> KddConfig:
         output_dir=Path(tempfile.gettempdir()) / "bankai-kdd-test",
         maximum_bytes_billed=2_000_000_000,
         max_rows=100_000,
-        algorithms=("apriori", "fpgrowth"),
+        algorithms=("apriori", "fpgrowth", "eclat", "apriori_hybrid"),
         min_support=0.20,
         min_confidence=0.60,
         min_lift=1.10,
@@ -127,7 +130,39 @@ class KddTest(unittest.TestCase):
             deduplicate_redundant_rules(rules[:2])[0]["antecedents"], ["priority=HIGH"]
         )
 
-    def test_apriori_and_fpgrowth_produce_same_target_rule_keys(self) -> None:
+    def test_han_filter_drops_near_duplicate_descendant_rules(self) -> None:
+        rules = [
+            {
+                "antecedents": ["category=TRANSACTIONS"],
+                "consequent": "status=IN_PROCESS",
+                "support": 0.4,
+                "confidence": 0.82,
+                "lift": 1.2,
+            },
+            {
+                "antecedents": ["subcategory=CARGO_NO_RECONOCIDO"],
+                "consequent": "status=IN_PROCESS",
+                "support": 0.1,
+                "confidence": 0.84,
+                "lift": 1.25,
+            },
+            {
+                "antecedents": ["subcategory=FRAUDE"],
+                "consequent": "status=IN_PROCESS",
+                "support": 0.05,
+                "confidence": 0.95,
+                "lift": 1.4,
+            },
+        ]
+        filtered = drop_han_redundant_rules(
+            rules, (("category", "subcategory"),), epsilon=0.05
+        )
+        antecedents = {tuple(rule["antecedents"]) for rule in filtered}
+        self.assertIn(("category=TRANSACTIONS",), antecedents)
+        self.assertNotIn(("subcategory=CARGO_NO_RECONOCIDO",), antecedents)
+        self.assertIn(("subcategory=FRAUDE",), antecedents)
+
+    def test_consensus_miners_and_hybrid_match_apriori_itemsets(self) -> None:
         definition = population_definitions()[0]
         frame = pd.DataFrame(
             {
@@ -147,18 +182,31 @@ class KddTest(unittest.TestCase):
         )
         matrix, _ = build_item_matrix(frame, definition, config())
         settings = config()
+        apriori_itemsets = mine_frequent_itemsets(matrix, "apriori", settings)
+        fpgrowth_itemsets = mine_frequent_itemsets(matrix, "fpgrowth", settings)
+        eclat_itemsets = mine_frequent_itemsets(matrix, "eclat", settings)
+        hybrid_itemsets = mine_frequent_itemsets(matrix, "apriori_hybrid", settings)
+
+        self.assertEqual(itemset_keys(apriori_itemsets), itemset_keys(fpgrowth_itemsets))
+        self.assertEqual(itemset_keys(apriori_itemsets), itemset_keys(eclat_itemsets))
+        self.assertEqual(itemset_keys(apriori_itemsets), itemset_keys(hybrid_itemsets))
+        self.assertEqual(
+            itemset_keys(eclat(matrix, min_support=0.2, use_colnames=True, max_len=4)),
+            itemset_keys(apriori_hybrid(matrix, min_support=0.2, use_colnames=True, max_len=4)),
+        )
+
         apriori = mine_rules(matrix, definition.target_column, "apriori", settings)
         fpgrowth = mine_rules(matrix, definition.target_column, "fpgrowth", settings)
-
+        eclat_rules = mine_rules(matrix, definition.target_column, "eclat", settings)
         self.assertTrue(apriori)
-        self.assertEqual(
-            {(tuple(rule["antecedents"]), rule["consequent"]) for rule in apriori},
-            {(tuple(rule["antecedents"]), rule["consequent"]) for rule in fpgrowth},
+        keys = {(tuple(rule["antecedents"]), rule["consequent"]) for rule in apriori}
+        self.assertEqual(keys, {(tuple(rule["antecedents"]), rule["consequent"]) for rule in fpgrowth})
+        self.assertEqual(keys, {(tuple(rule["antecedents"]), rule["consequent"]) for rule in eclat_rules})
+        comparison = compare_rule_sets(
+            {"apriori": apriori, "fpgrowth": fpgrowth, "eclat": eclat_rules}
         )
-        self.assertEqual(
-            compare_rule_sets({"apriori": apriori, "fpgrowth": fpgrowth})["jaccard"],
-            1.0,
-        )
+        self.assertEqual(comparison["comparison"], "apriori_fpgrowth_eclat")
+        self.assertEqual(comparison["triple_jaccard"], 1.0)
 
     def test_dry_run_plan_has_no_graph_stage(self) -> None:
         plan = dry_run_plan(config())

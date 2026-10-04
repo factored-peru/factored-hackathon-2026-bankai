@@ -6,16 +6,17 @@ dataset = "hackathon"
 start_timestamp = "2023-06-17T00:00:00+00:00"
 end_timestamp = "2026-06-19T00:00:00+00:00"
 output_dir = "artifacts/kdd"
-maximum_bytes_billed = 2000000000
-max_rows = 100000
-algorithms = ["apriori", "fpgrowth"]
-# After excluding post-outcome leakage for status, intake features yield modest
-# confidence; keep lift > 1 and confidence above the majority baseline (~0.40).
+# Full-window scans: ~4.4M transactions and ~13.5k Transactions complaints.
+maximum_bytes_billed = 50000000000
+max_rows = 5000000
+# Graph consensus uses Apriori ∩ FP-Growth ∩ Eclat. apriori_hybrid must match Apriori.
+algorithms = ["fpgrowth", "eclat", "apriori", "apriori_hybrid"]
 min_support = 0.01
 min_confidence = 0.40
 min_lift = 1.05
 max_itemset_length = 4
 max_categorical_cardinality = 100
+han_redundancy_epsilon = 0.05
 
 # Population policy (code defaults; documented here for operators):
 # - complaints are filtered to category = 'Transactions' (Dispute Transaction Support).
@@ -23,3 +24,6 @@ max_categorical_cardinality = 100
 # - category+subcategory co-antecedents are dropped (MultiLevel tautology filter).
 # - claimed_amount does not emit NON_NEGATIVE sign filler items.
 # - redundant strict-superset antecedents with identical metrics are deduplicated.
+# - fpmax runs as diagnostics only and never feeds the graph.
+# - no complaint↔transaction join (C6 remains blocked without a canonical key).
+# - max_rows must be >= population size in-window to mine without sampling.

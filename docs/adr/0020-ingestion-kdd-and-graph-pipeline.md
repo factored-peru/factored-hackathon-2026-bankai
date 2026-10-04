@@ -90,7 +90,9 @@ Cloud Scheduler (15 min; lookback 30 min)
   backend.
 - `compile-graph` v1 consume exclusivamente los artefactos KDD locales de un
   `run-id`. Valida los catálogos saneados y conserva solo reglas coincidentes
-  de Apriori y FP-Growth con iguales métricas de soporte, confianza y lift.
+  de Apriori, FP-Growth y Eclat con iguales métricas de soporte, confianza y
+  lift. AprioriHybrid se ejecuta como control de paridad/rendimiento frente a
+  Apriori y no aporta un cuarto voto. K2 permanece fuera del grafo asociativo.
   Materializa nodos de población, feature, valor, regla y target; una regla es
   un nodo para preservar la conjunción de antecedentes. Escribe de forma
   determinista `graph-v1.msgpack` y `graph-manifest.json` bajo artefactos

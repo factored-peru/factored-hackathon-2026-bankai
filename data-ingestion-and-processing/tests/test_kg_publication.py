@@ -23,7 +23,7 @@ def graph() -> CompiledGraph:
         edges=(
             GraphEdge("case:C1", "population:transactions", "applies_to", {}),
             GraphEdge("value:transactions:channel=POS", "rule:transactions:fixture", "antecedent", {}),
-            GraphEdge("rule:transactions:fixture", "target:transactions:transaction_status=DECLINED", "predicts", {"algorithms": ["apriori", "fpgrowth"], "support": 0.4, "confidence": 0.8, "lift": 1.6}),
+            GraphEdge("rule:transactions:fixture", "target:transactions:transaction_status=DECLINED", "predicts", {"algorithms": ["apriori", "fpgrowth", "eclat"], "support": 0.4, "confidence": 0.8, "lift": 1.6}),
         ),
     )
 
