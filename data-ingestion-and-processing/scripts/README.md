@@ -12,3 +12,8 @@ publicar artefactos consumibles por el backend.
 `list_bigquery_tables.py` es una utilidad read-only de inventario. La etapa
 `kdd` requiere `--kdd-config`; su configuración de ejemplo está en
 `../config/kdd.toml.example` y no invoca `compile-graph` ni `publish`.
+
+No existe bootstrap directo S3→GCS→BigQuery. `transfer` y `load` sólo se
+habilitarán mediante el contrato administrado de ADR 0020: Storage Transfer
+Service, evento GCS, validación/copia inmutable a `verified/`, Cloud Task OIDC,
+ledger idempotente y carga BigQuery sin truncar tablas raw.
