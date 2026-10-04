@@ -37,6 +37,14 @@ class PopulationDefinition:
     boolean_columns: tuple[str, ...]
     numeric_columns: tuple[str, ...]
     contract: TableContract
+    row_filter_sql: str | None = None
+    # Features excluded as antecedents when mining the configured target (anti-leakage).
+    target_leakage_booleans: tuple[str, ...] = ()
+    target_leakage_numerics: tuple[str, ...] = ()
+    # Ancestor/descendant feature pairs that must not co-occur in one antecedent.
+    hierarchical_pairs: tuple[tuple[str, str], ...] = ()
+    # Numeric columns that never emit NON_NEGATIVE sign items (filler reduction).
+    non_negative_numeric_columns: tuple[str, ...] = ()
 
     @property
     def selected_columns(self) -> tuple[str, ...]:
@@ -111,6 +119,11 @@ def population_definitions() -> tuple[PopulationDefinition, ...]:
             boolean_columns=("sla_breached", "is_repeat_complainer"),
             numeric_columns=("claimed_amount", "resolution_days"),
             contract=COMPLAINTS,
+            row_filter_sql="`category` = 'Transactions'",
+            target_leakage_booleans=("sla_breached",),
+            target_leakage_numerics=("resolution_days",),
+            hierarchical_pairs=(("category", "subcategory"),),
+            non_negative_numeric_columns=("claimed_amount",),
         ),
     )
 
@@ -158,7 +171,22 @@ def dry_run_plan(config: KddConfig) -> dict[str, object]:
     return {
         "project": config.project,
         "dataset": config.dataset,
-        "populations": [definition.name for definition in population_definitions()],
+        "populations": [
+            {
+                "name": definition.name,
+                "row_filter_sql": definition.row_filter_sql,
+                "target": definition.target_column,
+                "leakage_excluded": [
+                    *definition.target_leakage_booleans,
+                    *definition.target_leakage_numerics,
+                ],
+                "hierarchical_pairs": [
+                    {"ancestor": ancestor, "descendant": descendant}
+                    for ancestor, descendant in definition.hierarchical_pairs
+                ],
+            }
+            for definition in population_definitions()
+        ],
         "algorithms": list(config.algorithms),
         "time_window": {
             "start": config.start_timestamp.isoformat(),
@@ -185,7 +213,10 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
         )
         matrix, feature_catalog = build_item_matrix(frame, definition, config)
         rules_by_algorithm = {
-            algorithm: mine_rules(matrix, definition.target_column, algorithm, config)
+            algorithm: refine_mined_rules(
+                mine_rules(matrix, definition.target_column, algorithm, config),
+                definition,
+            )
             for algorithm in config.algorithms
         }
         results[definition.name] = {
@@ -231,11 +262,17 @@ def _read_population(
 
     table = _table_ref(config, definition.table)
     columns = ", ".join(f"`{column}`" for column in definition.selected_columns)
+    filters = [
+        f"`{definition.timestamp_column}` >= @start_timestamp",
+        f"`{definition.timestamp_column}` < @end_timestamp",
+    ]
+    if definition.row_filter_sql:
+        filters.append(f"({definition.row_filter_sql})")
+    where_clause = "\n  AND ".join(filters)
     query = f"""
 SELECT {columns}
 FROM `{table}`
-WHERE `{definition.timestamp_column}` >= @start_timestamp
-  AND `{definition.timestamp_column}` < @end_timestamp
+WHERE {where_clause}
 ORDER BY FARM_FINGERPRINT(CAST(`{definition.primary_key}` AS STRING))
 LIMIT @max_rows
 """.strip()
@@ -275,15 +312,36 @@ def build_item_matrix(
         if frame[column].nunique(dropna=True) <= config.max_categorical_cardinality
     )
     excluded = sorted(set(categorical) - set(permitted))
+    boolean_columns = tuple(
+        column
+        for column in definition.boolean_columns
+        if column not in definition.target_leakage_booleans
+    )
+    numeric_columns = tuple(
+        column
+        for column in definition.numeric_columns
+        if column not in definition.target_leakage_numerics
+    )
+    leakage_excluded = sorted(
+        {*definition.target_leakage_booleans, *definition.target_leakage_numerics}
+    )
     numeric_bounds = {
-        column: _numeric_bounds(frame[column]) for column in definition.numeric_columns
+        column: _numeric_bounds(frame[column]) for column in numeric_columns
     }
     for _, row in frame.iterrows():
         record = [_categorical_item(column, row[column]) for column in permitted]
-        for column in definition.boolean_columns:
+        for column in boolean_columns:
             record.append(_boolean_item(column, row[column]))
-        for column in definition.numeric_columns:
-            record.extend(_numeric_items(column, row[column], numeric_bounds[column]))
+        for column in numeric_columns:
+            record.extend(
+                _numeric_items(
+                    column,
+                    row[column],
+                    numeric_bounds[column],
+                    emit_non_negative_sign=column
+                    not in definition.non_negative_numeric_columns,
+                )
+            )
         items.append(record)
     from mlxtend.preprocessing import TransactionEncoder
 
@@ -291,6 +349,11 @@ def build_item_matrix(
     matrix = pd.DataFrame(encoder.fit(items).transform(items), columns=encoder.columns_)
     catalog["features"] = sorted(matrix.columns.tolist())
     catalog["excluded_high_cardinality_columns"] = excluded
+    catalog["excluded_target_leakage_columns"] = leakage_excluded
+    catalog["hierarchical_pairs"] = [
+        {"ancestor": ancestor, "descendant": descendant}
+        for ancestor, descendant in definition.hierarchical_pairs
+    ]
     return matrix, catalog
 
 
@@ -336,6 +399,73 @@ def mine_rules(
             }
         )
     return output
+
+
+def refine_mined_rules(
+    rules: list[dict[str, object]], definition: PopulationDefinition
+) -> list[dict[str, object]]:
+    """Drop MultiLevel tautologies and strict-superset redundant rules."""
+    without_hierarchy = [
+        rule
+        for rule in rules
+        if not _has_hierarchical_cooccurrence(
+            list(rule["antecedents"]), definition.hierarchical_pairs
+        )
+    ]
+    return deduplicate_redundant_rules(without_hierarchy)
+
+
+def _has_hierarchical_cooccurrence(
+    antecedents: list[str], pairs: tuple[tuple[str, str], ...]
+) -> bool:
+    features = {item.split("=", 1)[0] for item in antecedents}
+    return any(ancestor in features and descendant in features for ancestor, descendant in pairs)
+
+
+def deduplicate_redundant_rules(
+    rules: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Remove rules whose antecedents are a strict superset of another with equal metrics."""
+    ranked = sorted(
+        rules,
+        key=lambda rule: (
+            str(rule["consequent"]),
+            len(list(rule["antecedents"])),
+            -float(rule["lift"]),
+            -float(rule["confidence"]),
+            -float(rule["support"]),
+            tuple(rule["antecedents"]),
+        ),
+    )
+    kept: list[dict[str, object]] = []
+    for candidate in ranked:
+        candidate_antecedents = set(candidate["antecedents"])
+        redundant = False
+        for kept_rule in kept:
+            if kept_rule["consequent"] != candidate["consequent"]:
+                continue
+            kept_antecedents = set(kept_rule["antecedents"])
+            if not kept_antecedents < candidate_antecedents:
+                continue
+            if (
+                kept_rule["support"] == candidate["support"]
+                and kept_rule["confidence"] == candidate["confidence"]
+                and kept_rule["lift"] == candidate["lift"]
+            ):
+                redundant = True
+                break
+        if not redundant:
+            kept.append(candidate)
+    return sorted(
+        kept,
+        key=lambda rule: (
+            -float(rule["lift"]),
+            -float(rule["confidence"]),
+            -float(rule["support"]),
+            tuple(rule["antecedents"]),
+            str(rule["consequent"]),
+        ),
+    )
 
 
 def compare_rule_sets(
@@ -398,7 +528,11 @@ def _numeric_bounds(population: pd.Series) -> tuple[float, float, float] | None:
 
 
 def _numeric_items(
-    column: str, value: object, bounds: tuple[float, float, float] | None
+    column: str,
+    value: object,
+    bounds: tuple[float, float, float] | None,
+    *,
+    emit_non_negative_sign: bool = True,
 ) -> list[str]:
     numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
     if pd.isna(numeric):
@@ -407,9 +541,21 @@ def _numeric_items(
     if bounds is None:
         return [f"{column}=PRESENT"]
     q50, q90, q99 = bounds
-    bucket = "LOW" if absolute <= q50 else "MEDIUM" if absolute <= q90 else "HIGH" if absolute <= q99 else "EXTREME"
-    sign = "NEGATIVE" if float(numeric) < 0 else "NON_NEGATIVE"
-    return [f"{column}_bucket={bucket}", f"{column}_sign={sign}"]
+    bucket = (
+        "LOW"
+        if absolute <= q50
+        else "MEDIUM"
+        if absolute <= q90
+        else "HIGH"
+        if absolute <= q99
+        else "EXTREME"
+    )
+    items = [f"{column}_bucket={bucket}"]
+    if float(numeric) < 0:
+        items.append(f"{column}_sign=NEGATIVE")
+    elif emit_non_negative_sign:
+        items.append(f"{column}_sign=NON_NEGATIVE")
+    return items
 
 
 def _rule_key(rule: Mapping[str, object]) -> tuple[tuple[str, ...], str]:

@@ -2,14 +2,24 @@
 # Identifiers only; credentials are discovered through Application Default Credentials.
 project = "factored-hackathon"
 dataset = "hackathon"
-start_timestamp = "2023-01-01T00:00:00+00:00"
-end_timestamp = "2024-01-01T00:00:00+00:00"
+# Aligns with Phase 1 dispute baseline snapshot (America/Lima period bounds in UTC).
+start_timestamp = "2023-06-17T00:00:00+00:00"
+end_timestamp = "2026-06-19T00:00:00+00:00"
 output_dir = "artifacts/kdd"
 maximum_bytes_billed = 2000000000
 max_rows = 100000
 algorithms = ["apriori", "fpgrowth"]
+# After excluding post-outcome leakage for status, intake features yield modest
+# confidence; keep lift > 1 and confidence above the majority baseline (~0.40).
 min_support = 0.01
-min_confidence = 0.60
-min_lift = 1.10
+min_confidence = 0.40
+min_lift = 1.05
 max_itemset_length = 4
 max_categorical_cardinality = 100
+
+# Population policy (code defaults; documented here for operators):
+# - complaints are filtered to category = 'Transactions' (Dispute Transaction Support).
+# - when target = status, resolution_days and sla_breached are excluded (anti-leakage).
+# - category+subcategory co-antecedents are dropped (MultiLevel tautology filter).
+# - claimed_amount does not emit NON_NEGATIVE sign filler items.
+# - redundant strict-superset antecedents with identical metrics are deduplicated.

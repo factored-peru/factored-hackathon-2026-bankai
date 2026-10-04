@@ -112,20 +112,54 @@ operacionales.
 ## Alcance de datos
 
 Transacciones usa estado, tipo/categoría, canal, categoría de comercio,
-moneda, código de respuesta, fraude, monto y score de fraude. Reclamos usa
-estado, tipo/categoría/subcategoría, canal de recepción, prioridad, SLA,
-repetición, monto reclamado y días de resolución.
+moneda, código de respuesta, fraude, monto y score de fraude. Reclamos de
+Dispute Support se filtran a `category = 'Transactions'` y minan hacia
+`status` con features de ingreso: tipo/categoría/subcategoría, canal,
+prioridad, repetición y monto reclamado.
 
 Se excluyen IDs, cliente, producto, sucursal, comercio, ciudad, coordenadas,
 `description`, `resolution`, transcripts y cualquier texto libre. Las columnas
 con cardinalidad superior al límite se excluyen antes de minar reglas.
 
+### Consideraciones de papers y endurecimiento (`kdd-20261004-hardened`)
+
+Lecciones aplicadas desde
+[`futour-knowledge-graph-lessons.md`](futour-knowledge-graph-lessons.md)
+(Agrawal/Srikant Apriori, Han et al. FP-Growth, MultiLevel associations):
+
+1. **Anti-leakage**: si el target es `status`, no se minan `resolution_days*`
+   ni `sla_breached` como antecedentes. Las reglas previas hacia `RESOLVED`
+   con alta confianza dependían de esos post-outcomes y no son evidencia de
+   triage al ingreso.
+2. **MultiLevel**: se descartan antecedentes que mezclan `category` y
+   `subcategory` (ancestro + descendiente) en la misma regla.
+3. **Scope Dispute**: población de reclamos limitada a Transactions, alineada
+   al baseline de Fase 1.
+4. **Deduplicación**: se eliminan superconjuntos estrictos de antecedentes con
+   las mismas métricas; `claimed_amount` no emite ítems relleno
+   `*_sign=NON_NEGATIVE`.
+5. **Dual miner**: sólo reglas idénticas Apriori ∩ FP-Growth pasan al grafo.
+
+Run endurecido sobre `factored-hackathon.hackathon`
+(`[2023-06-17, 2026-06-19)`):
+
+| Población | Reglas corroboradas | Consecuentes dominantes |
+| --- | ---: | --- |
+| transactions | 402 | APPROVED (395), DECLINED (7) |
+| complaints | 33 | IN_PROCESS (33) |
+| **Total al grafo** | **435** | — |
+
+Umbrales del ejemplo: `min_support=0.01`, `min_confidence=0.40`,
+`min_lift=1.05` (confianza por encima de la prevalencia ~0.40 de
+`IN_PROCESS`). Quejas con features de ingreso no sostienen asociaciones fuertes
+hacia `RESOLVED` sin leakage: ese hallazgo es intencional.
+
 ## Ejecución
 
 ```bash
 cp config/kdd.toml.example /ruta-segura/kdd.toml
-bankai-pipeline --stage kdd --run-id kdd-20261003 --kdd-config /ruta-segura/kdd.toml --dry-run
-bankai-pipeline --stage kdd --run-id kdd-20261003 --kdd-config /ruta-segura/kdd.toml
+bankai-pipeline --stage kdd --run-id kdd-20261004-hardened --kdd-config /ruta-segura/kdd.toml --dry-run
+bankai-pipeline --stage kdd --run-id kdd-20261004-hardened --kdd-config /ruta-segura/kdd.toml
 ```
 
 La segunda orden requiere ADC y acceso read-only a BigQuery. Escribe sólo

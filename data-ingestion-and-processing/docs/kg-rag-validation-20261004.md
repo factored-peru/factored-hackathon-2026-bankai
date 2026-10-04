@@ -1,82 +1,86 @@
-# Validación local de KG-RAG: C1–C5
+# Validación local de KG-RAG: run endurecido 2026-10-04
 
 ## Propósito y alcance
 
-Este registro documenta la ejecución reproducible del KDD, la compilación y
-la publicación local del grafo que alimenta el adaptador KG-RAG. Describe
-asociaciones agregadas y baselines exploratorios; no representa transacciones,
+Registra la regeneración del KDD/grafo tras aplicar filtros anti-leakage,
+MultiLevel y scope Transactions (papers/FuTour). Describe asociaciones
+agregadas y baselines exploratorios C1–C5; no representa transacciones,
 reclamos ni predicciones de un cliente.
 
 El único destino local admitido es el tenant `demo-bankai`. El paquete vive
-bajo una ruta ignorada por Git, y no se publicó en GCS ni se conectó al chat
+bajo una ruta ignorada por Git; no se publicó en GCS ni se conectó al chat
 productivo.
+
+## Lectura ordenada
+
+1. [CRISP-DM / KDD operating model](crisp-dm-kdd-operating-model.md)
+2. [Baseline Fase 1](phase1-problem-baseline-20261004.md)
+3. [KDD Dispute Transaction Support](kdd-dispute-transaction-support.md)
+4. [Lecciones FuTour / papers](futour-knowledge-graph-lessons.md)
+5. Este documento (artefacto KG)
+6. [Catálogo de casos C1–C8](prioritized-dispute-case-catalog.md)
 
 ## Artefacto validado
 
 | Campo | Resultado |
 | --- | --- |
-| Ejecución KDD | `kdd-20261004-kg` |
-| Grafo | `graph-20261004-kg` |
+| Ejecución KDD | `kdd-20261004-hardened` |
+| Grafo | `graph-20261004-hardened` |
 | Esquema | `bankai-kdd-graph-v1` |
-| Nodos / aristas | 639 / 2,024 |
-| Reglas corroboradas | 500, presentes en Apriori y FP-Growth con las mismas métricas |
-| SHA-256 de `graph-v1.msgpack` | `3f6b3b19d7b818d25bea916c4d231f8c36edf6f30d3a3a3b0b6845ede8f75f9d` |
-| Catálogo local | `kg-v1-3f6b3b19d7b818d2` |
+| Nodos / aristas | 553 / 1,787 |
+| Reglas corroboradas | 435 (Apriori ∩ FP-Growth, métricas idénticas) |
+| SHA-256 de `graph-v1.msgpack` | `d4b128bc0ab01b9d7446954b903d4d2c0bfbd51f222102f16c4c7d82d4be3aab` |
+| Catálogo local | `kg-v1-d4b128bc0ab01b9d` |
 | Tenant permitido | `demo-bankai` |
+| Publicación local | `app/backend/.local/kg-rag/demo-bankai/graph-20261004-hardened` |
 
-El manifiesto conserva el `run_id`, la versión del catálogo de casos, hashes
-de artefactos de KDD y provenance agregado de la suite supervisada. No contiene
-filas, IDs de cliente, texto libre, transcripciones ni evidencia individual.
+Comparado con el run previo `graph-20261004-kg` (639 nodos / 2,024 aristas /
+500 reglas): el grafo endurecido es más pequeño porque elimina leakage
+post-outcome, tautologías jerárquicas y relleno; no porque se haya perdido
+cobertura de C1–C5 (siguen como provenance exploratorio).
+
+## Filtros aplicados al KDD
+
+| Filtro | Efecto |
+| --- | --- |
+| `category = 'Transactions'` en complaints | Scope Dispute Transaction Support |
+| Excluir `resolution_days*`, `sla_breached` si target=`status` | Anti-leakage de outcome |
+| Drop `category`+`subcategory` en el mismo antecedente | MultiLevel (Han et al.) |
+| Dedup superconjunto con mismas métricas | Menos reglas redundantes |
+| Sin `claimed_amount_sign=NON_NEGATIVE` | Menos ítems relleno |
 
 ## Casos expuestos
 
 | Caso | Target exploratorio | Resultado y límite |
 | --- | --- | --- |
 | C1 | `sla_breached` | El piloto no supera la prevalencia; no hay umbral ni priorización aprobada. |
-| C2 | `resolution_days` | El baseline global fue mejor que la cohorte; describe capacidad, no fecha prometida. |
-| C3 | `is_fraud` | El `fraud_score` existente supera el baseline; no abre una investigación automática. |
-| C4 | `requires_followup` / `was_escalated` | Sin recall operativo al umbral informativo; no usar texto ni transcripciones. |
+| C2 | `resolution_days` | Baseline global de capacidad (p50≈15d / p90≈27d); no promete fecha. |
+| C3 | `is_fraud` | El `fraud_score` existente supera el baseline; no abre investigación automática. |
+| C4 | `requires_followup` / `was_escalated` | Sin recall operativo al umbral informativo. |
 | C5 | `main_score` | Sin evidencia para recuperación automática de servicio. |
 
-Las preguntas golden de C1–C5 usan exclusivamente `kg.case.summary`. Piden el
-alcance, target y limitación del caso, y validan que el selector escoja un
-`case_id` permitido sólo después de cargar el catálogo. No piden reglas para
-una persona, una operación o un reclamo específico.
+C6–C8 siguen bloqueados (sin join canónico reclamo–operación / comercio / rail).
 
 ## Resultado de pruebas
 
-La validación de la implementación verificó:
-
-- Pipeline Python: 24 pruebas unitarias aprobadas, incluidas compilación del
-  grafo, integración C1–C5, publicación local, checksums, esquema, idempotencia
-  y rechazo de tenant ajeno.
-- Backend Bun: 216 pruebas aprobadas, 987 assertions en 35 archivos, incluidos
-  lectura de artefactos, checksum, catálogo ausente, schema inválido, tenant
-  ajeno y operaciones no permitidas.
-- Contratos y calidad: `bun run spec:check`, `bun run check-types`, `bun run
-  check` y `git diff --check` aprobados.
-
-La suite de evaluación agrega cinco goldens sintéticos, uno por C1–C5. Sus
-metadatos verifican catálogo antes de JEV, ruta KG cerrada, selección coincidente
-y evidencia requerida. El texto de las preguntas se mantiene únicamente como
-entrada de prueba: no entra en `EvaluationContext`, resultados, telemetría ni
-artefactos.
+- Pipeline Python: `pytest` 33 pruebas aprobadas (incluye filtros KDD endurecidos).
+- Backend Bun: suite previa + lectura local del artefacto publicado bajo
+  `.local/kg-rag` (sin secretos en Git).
 
 ## Límites pendientes
 
-- La publicación real en GCS, el puntero productivo y su lease Firestore siguen
-  siendo trabajo separado de ADR 0020.
-- KG-RAG no está conectado al `ConversationRunner` ni al chat demo.
-- C6–C8 siguen bloqueados: no existe una relación canónica reclamo-operación,
-  evidencia de comercio validada o reconciliación de rail de pagos.
-- Las reglas son asociaciones exploratorias, no causalidad, autorización,
-  diagnóstico individual o automatización.
+- Publicación GCS + lease Firestore (ADR 0020).
+- KG-RAG no está cableado al `ConversationRunner` productivo.
+- Asociaciones de complaints hacia `status` son débiles sin leakage; no se
+  reintroducen features post-outcome para “mejorar” métricas.
+- Las reglas no son causalidad, autorización ni diagnóstico individual.
 
 ## Referencias
 
 - [Catálogo de casos priorizados](prioritized-dispute-case-catalog.md)
 - [KDD de Dispute Transaction Support](kdd-dispute-transaction-support.md)
-- [Goldens de preguntas KG C1–C5](../../app/backend/tests/fixtures/kg-question-goldens.ts)
+- [Lecciones FuTour](futour-knowledge-graph-lessons.md)
+- [Goldens KG C1–C5](../../app/backend/tests/fixtures/kg-question-goldens.ts)
 - [ADR 0011](../../docs/adr/0011-rag-trust-tenant-isolation.md)
 - [ADR 0015](../../docs/adr/0015-agent-evaluation-release-gates.md)
 - [ADR 0020](../../docs/adr/0020-ingestion-kdd-and-graph-pipeline.md)

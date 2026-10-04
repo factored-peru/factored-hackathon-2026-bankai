@@ -4,6 +4,15 @@ Pipeline offline en Python 3.12 para Dispute Transaction Support. No expone
 endpoints ni participa en peticiones de usuario. La decisión normativa de stack, etapas y publicación vive en
 `../docs/adr/0020-ingestion-kdd-and-graph-pipeline.md`.
 
+## Índice de lectura (datos → KDD → grafo)
+
+1. [`docs/crisp-dm-kdd-operating-model.md`](docs/crisp-dm-kdd-operating-model.md) — CRISP-DM ↔ etapas Bankai.
+2. [`docs/phase1-problem-baseline-20261004.md`](docs/phase1-problem-baseline-20261004.md) — evidencia cuantitativa P0-01/02/05.
+3. [`docs/kdd-dispute-transaction-support.md`](docs/kdd-dispute-transaction-support.md) — KDD, papers y run endurecido.
+4. [`docs/futour-knowledge-graph-lessons.md`](docs/futour-knowledge-graph-lessons.md) — Apriori / FP-Growth / MultiLevel / FuTour.
+5. [`docs/kg-rag-validation-20261004.md`](docs/kg-rag-validation-20261004.md) — artefacto KG local validado.
+6. [`docs/prioritized-dispute-case-catalog.md`](docs/prioritized-dispute-case-catalog.md) — C1–C8 y bloqueos.
+
 ## Responsabilidades
 
 1. Reconciliar la transferencia no destructiva de CSV desde S3 a GCS cada 15
