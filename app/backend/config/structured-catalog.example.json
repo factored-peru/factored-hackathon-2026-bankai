@@ -1,0 +1,206 @@
+{
+	"kind": "structured",
+	"version": "example-1",
+	"entries": [
+		{
+			"queryId": "customer_products",
+			"version": "v1",
+			"description": "Lists the products (cards and accounts) owned by the customer with their status and balance.",
+			"sql": "SELECT product_id, product_type, currency, current_balance, credit_limit, product_status, opening_date, expiration_date FROM `{project}.{dataset}.products` WHERE customer_id = @customer_id ORDER BY opening_date DESC LIMIT 50",
+			"parameters": [
+				{
+					"name": "customer_id",
+					"source": "session",
+					"type": "string",
+					"binding": "customer_id"
+				}
+			],
+			"columns": [
+				{
+					"name": "product_id",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "product_type",
+					"type": "string",
+					"classification": "financial"
+				},
+				{ "name": "currency", "type": "string", "classification": "financial" },
+				{
+					"name": "current_balance",
+					"type": "float64",
+					"classification": "financial"
+				},
+				{
+					"name": "credit_limit",
+					"type": "float64",
+					"classification": "financial"
+				},
+				{
+					"name": "product_status",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "opening_date",
+					"type": "date",
+					"classification": "financial"
+				},
+				{
+					"name": "expiration_date",
+					"type": "date",
+					"classification": "financial"
+				}
+			],
+			"relations": [{ "column": "product_id", "references": "products" }],
+			"allowedRoles": ["customer"],
+			"maxRows": 50,
+			"maximumBytesBilled": 100000000
+		},
+		{
+			"queryId": "product_status",
+			"version": "v1",
+			"description": "Status, balance and limits of one product owned by the customer.",
+			"sql": "SELECT product_id, product_type, currency, current_balance, credit_limit, product_status, days_past_due FROM `{project}.{dataset}.products` WHERE customer_id = @customer_id AND product_id = @product_id LIMIT 1",
+			"parameters": [
+				{
+					"name": "customer_id",
+					"source": "session",
+					"type": "string",
+					"binding": "customer_id"
+				},
+				{
+					"name": "product_id",
+					"source": "caller",
+					"type": "string",
+					"required": true,
+					"maxLength": 64,
+					"format": "identifier"
+				}
+			],
+			"columns": [
+				{
+					"name": "product_id",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "product_type",
+					"type": "string",
+					"classification": "financial"
+				},
+				{ "name": "currency", "type": "string", "classification": "financial" },
+				{
+					"name": "current_balance",
+					"type": "float64",
+					"classification": "financial"
+				},
+				{
+					"name": "credit_limit",
+					"type": "float64",
+					"classification": "financial"
+				},
+				{
+					"name": "product_status",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "days_past_due",
+					"type": "float64",
+					"classification": "financial"
+				}
+			],
+			"relations": [{ "column": "product_id", "references": "products" }],
+			"allowedRoles": ["customer"],
+			"maxRows": 1,
+			"maximumBytesBilled": 100000000
+		},
+		{
+			"queryId": "recent_transactions",
+			"version": "v1",
+			"description": "Transactions of one product owned by the customer within a date range, newest first.",
+			"sql": "SELECT transaction_id, transaction_date, transaction_type, transaction_category, amount, currency, channel, merchant_name, merchant_category, transaction_status, response_code FROM `{project}.{dataset}.transactions` WHERE customer_id = @customer_id AND product_id = @product_id AND DATE(transaction_date) >= @from_date AND DATE(transaction_date) <= @to_date ORDER BY transaction_date DESC LIMIT 20",
+			"parameters": [
+				{
+					"name": "customer_id",
+					"source": "session",
+					"type": "string",
+					"binding": "customer_id"
+				},
+				{
+					"name": "product_id",
+					"source": "caller",
+					"type": "string",
+					"required": true,
+					"maxLength": 64,
+					"format": "identifier"
+				},
+				{
+					"name": "from_date",
+					"source": "caller",
+					"type": "date",
+					"required": true
+				},
+				{
+					"name": "to_date",
+					"source": "caller",
+					"type": "date",
+					"required": true
+				}
+			],
+			"columns": [
+				{
+					"name": "transaction_id",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "transaction_date",
+					"type": "timestamp",
+					"classification": "financial"
+				},
+				{
+					"name": "transaction_type",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "transaction_category",
+					"type": "string",
+					"classification": "financial"
+				},
+				{ "name": "amount", "type": "float64", "classification": "financial" },
+				{ "name": "currency", "type": "string", "classification": "financial" },
+				{ "name": "channel", "type": "string", "classification": "financial" },
+				{
+					"name": "merchant_name",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "merchant_category",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "transaction_status",
+					"type": "string",
+					"classification": "financial"
+				},
+				{
+					"name": "response_code",
+					"type": "int64",
+					"classification": "financial"
+				}
+			],
+			"relations": [
+				{ "column": "transaction_id", "references": "transactions" }
+			],
+			"allowedRoles": ["customer"],
+			"maxRows": 20,
+			"maximumBytesBilled": 1000000000
+		}
+	]
+}

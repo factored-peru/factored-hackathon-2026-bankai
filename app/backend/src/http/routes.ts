@@ -2,6 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { type Env, env } from "../config/env.js";
 import {
+	attachmentKindSchema,
+	type WebsocketServerEvent,
+	websocketClientEventSchema,
+} from "../domain/conversation/contracts.js";
+import {
 	approvalDecisionSchema,
 	type DisputeEvidence,
 	escalationRequestSchema,
@@ -10,13 +15,20 @@ import {
 import { errorCodes } from "../domain/error-codes.js";
 import { AppError } from "../domain/errors.js";
 import { createItemSchema } from "../domain/items.js";
-import type { SessionContext } from "../domain/session.js";
+import type { SessionContext, SessionStore } from "../domain/session.js";
+import type { ConversationService } from "../services/conversations/conversation-service.js";
 import type { DisputeSupportService } from "../services/disputes/dispute-support-service.js";
 import type { ItemService } from "../services/item-service.js";
+import type {
+	AttachmentStore,
+	ConversationEventPublisher,
+	DemoActorDirectory,
+} from "../services/ports/conversation.js";
 import type { SessionAuthService } from "../services/session-auth-service.js";
 import type { AppIntegrations } from "./server.js";
 
 const openApiSpecUrl = new URL("../../specs/openapi.json", import.meta.url);
+const asyncApiSpecUrl = new URL("../../specs/asyncapi.json", import.meta.url);
 
 type IntegrationStatus = "disabled" | "ready" | "degraded";
 
@@ -63,6 +75,27 @@ function requireServiceToken(request: FastifyRequest, runtimeEnv: Env): void {
 export type DisputeHttpRuntime = Readonly<{
 	auth: SessionAuthService;
 	support: DisputeSupportService;
+}>;
+
+export type ConversationHttpRuntime = Readonly<{
+	sessions: SessionStore;
+	demoActors: DemoActorDirectory;
+	demoFixtures: Readonly<{
+		transactionId: string;
+		disputeId: string;
+		caseId: string;
+	}>;
+	conversations: ConversationService;
+	attachments: AttachmentStore;
+	demoAttachmentUpload?: {
+		upload(input: {
+			attachmentId: string;
+			session: SessionContext;
+			mediaType: string;
+			content: Uint8Array;
+		}): Promise<unknown | null>;
+	};
+	publisher: ConversationEventPublisher;
 }>;
 
 function cookieValue(
@@ -114,14 +147,37 @@ function requireDisputeRuntime(
 	return runtime;
 }
 
+async function requireConversationSession(
+	request: FastifyRequest,
+	runtime: ConversationHttpRuntime | undefined,
+	runtimeEnv: Env,
+): Promise<SessionContext> {
+	if (!runtime) throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+	const sessionId = cookieValue(request, runtimeEnv.SESSION_COOKIE_NAME);
+	if (!sessionId) throw new AppError(errorCodes.CREDENTIALS_MISSING);
+	const session = await runtime.sessions.get(sessionId);
+	if (!session) throw new AppError(errorCodes.CREDENTIALS_INVALID_OR_EXPIRED);
+	return session;
+}
+
+function originAllowed(request: FastifyRequest, runtimeEnv: Env): boolean {
+	const origin = request.headers.origin;
+	const allowed = runtimeEnv.CORS_ALLOWED_ORIGINS.split(",")
+		.map((item) => item.trim())
+		.filter(Boolean);
+	return typeof origin === "string" && allowed.includes(origin);
+}
+
 export function registerRoutes(
 	app: FastifyInstance,
 	itemService: ItemService,
 	runtimeEnv: Env = env,
 	integrations?: AppIntegrations,
 	disputeRuntime?: DisputeHttpRuntime,
+	conversationRuntime?: ConversationHttpRuntime,
 ): void {
 	app.get("/openapi.json", async () => Bun.file(openApiSpecUrl).json());
+	app.get("/asyncapi.json", async () => Bun.file(asyncApiSpecUrl).json());
 
 	app.get("/v1/health/live", async () => ({
 		status: "ok",
@@ -267,5 +323,246 @@ export function registerRoutes(
 				body,
 			),
 		);
+	});
+
+	app.get("/v1/demo/actors", async () => {
+		if (!runtimeEnv.DEMO_AUTH_ENABLED || !conversationRuntime)
+			throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		return conversationRuntime.demoActors.list();
+	});
+
+	app.get("/v1/demo/fixtures", async () => {
+		if (!runtimeEnv.DEMO_AUTH_ENABLED || !conversationRuntime)
+			throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		return conversationRuntime.demoFixtures;
+	});
+
+	app.post("/v1/demo/sessions", async (request, reply) => {
+		if (!runtimeEnv.DEMO_AUTH_ENABLED || !conversationRuntime)
+			throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		const body = request.body as { actorId?: unknown };
+		if (typeof body?.actorId !== "string")
+			throw new AppError(errorCodes.SCHEMA_VALIDATION_FAILED);
+		const actor = await conversationRuntime.demoActors.resolve(body.actorId);
+		if (!actor) throw new AppError(errorCodes.CREDENTIALS_INVALID_OR_EXPIRED);
+		const session = await conversationRuntime.sessions.create({
+			...actor,
+			scopes: ["dispute:read"],
+		});
+		reply.header(
+			"Set-Cookie",
+			`${runtimeEnv.SESSION_COOKIE_NAME}=${encodeURIComponent(session.sessionId)}; Path=/; HttpOnly; SameSite=Strict`,
+		);
+		return reply
+			.code(201)
+			.send({ status: "created", role: actor.roles[0] ?? "customer" });
+	});
+
+	app.get("/v1/me", async (request) => {
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		return {
+			userId: session.userId,
+			tenantId: session.tenantId,
+			roles: session.roles,
+			capabilities: session.capabilities,
+			sessionVersion: session.sessionVersion,
+		};
+	});
+
+	app.get("/v1/conversations", async (request) => {
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		return conversationRuntime?.conversations.list(session);
+	});
+
+	app.get("/v1/conversations/:threadId", async (request) => {
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		const threadId = (request.params as { threadId: string }).threadId;
+		const snapshot = await conversationRuntime?.conversations.get(
+			session,
+			threadId,
+		);
+		if (!snapshot) throw new AppError(errorCodes.RESOURCE_STATE_CONFLICT);
+		return snapshot;
+	});
+
+	app.post("/v1/uploads", async (request, reply) => {
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		const body = request.body as {
+			kind?: unknown;
+			mediaType?: unknown;
+			byteSize?: unknown;
+			filename?: unknown;
+		};
+		const kind = attachmentKindSchema.parse(body.kind);
+		if (
+			typeof body.mediaType !== "string" ||
+			typeof body.filename !== "string" ||
+			typeof body.byteSize !== "number" ||
+			body.byteSize > runtimeEnv.CHAT_MAX_ATTACHMENT_BYTES
+		)
+			throw new AppError(errorCodes.SCHEMA_VALIDATION_FAILED);
+		const result = await conversationRuntime?.attachments.create({
+			session,
+			kind,
+			mediaType: body.mediaType,
+			byteSize: body.byteSize,
+			filename: body.filename,
+		});
+		return reply.code(201).send(result);
+	});
+
+	app.post("/v1/uploads/:attachmentId/complete", async (request) => {
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		const attachmentId = (request.params as { attachmentId: string })
+			.attachmentId;
+		const result = await conversationRuntime?.attachments.complete({
+			attachmentId,
+			session,
+		});
+		if (!result) throw new AppError(errorCodes.RESOURCE_STATE_CONFLICT);
+		return result;
+	});
+
+	app.put("/v1/demo/uploads/:attachmentId", async (request) => {
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		if (
+			!runtimeEnv.DEMO_AUTH_ENABLED ||
+			!conversationRuntime?.demoAttachmentUpload
+		)
+			throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		const attachmentId = (request.params as { attachmentId: string })
+			.attachmentId;
+		const content = request.body;
+		const mediaType = request.headers["content-type"];
+		if (!(content instanceof Uint8Array) || typeof mediaType !== "string")
+			throw new AppError(errorCodes.SCHEMA_VALIDATION_FAILED);
+		const result = await conversationRuntime.demoAttachmentUpload.upload({
+			attachmentId,
+			session,
+			mediaType,
+			content,
+		});
+		if (!result) throw new AppError(errorCodes.RESOURCE_STATE_CONFLICT);
+		return result;
+	});
+
+	app.get("/v1/realtime", { websocket: true }, async (socket, request) => {
+		if (
+			!runtimeEnv.REALTIME_ENABLED ||
+			!conversationRuntime ||
+			!originAllowed(request, runtimeEnv)
+		)
+			return socket.close(1008, "unauthorized");
+		let session: SessionContext;
+		try {
+			session = await requireConversationSession(
+				request,
+				conversationRuntime,
+				runtimeEnv,
+			);
+		} catch {
+			return socket.close(1008, "unauthorized");
+		}
+		const send = (value: WebsocketServerEvent) =>
+			socket.send(JSON.stringify(value));
+		send({
+			type: "session.ready",
+			threadId: null,
+			traceId: null,
+			revision: null,
+			payload: { userId: session.userId, roles: session.roles },
+		});
+		const unsubscribe = conversationRuntime.publisher.subscribe(
+			session.tenantId,
+			(outbound) => {
+				if (outbound.threadId === null) {
+					send(outbound);
+					return;
+				}
+				void conversationRuntime.conversations
+					.get(session, outbound.threadId)
+					.then((snapshot) => {
+						if (snapshot) send(outbound);
+					});
+			},
+		);
+		socket.on("message", async (raw) => {
+			const parsed = websocketClientEventSchema.safeParse(
+				JSON.parse(raw.toString()),
+			);
+			if (!parsed.success)
+				return send({
+					type: "problem",
+					threadId: null,
+					traceId: null,
+					revision: null,
+					payload: { code: "SVC-CORE-1002" },
+				});
+			if (parsed.data.type === "conversation.subscribe") {
+				const snapshot = await conversationRuntime.conversations.get(
+					session,
+					parsed.data.threadId,
+				);
+				return send({
+					type: "conversation.snapshot",
+					threadId: parsed.data.threadId,
+					traceId: snapshot?.trace.traceId ?? null,
+					revision: snapshot?.revision ?? null,
+					payload: snapshot,
+				});
+			}
+			try {
+				const snapshot = await conversationRuntime.conversations.send({
+					session,
+					...(parsed.data.threadId === undefined
+						? {}
+						: { threadId: parsed.data.threadId }),
+					clientMessageId: parsed.data.clientMessageId,
+					...(parsed.data.text === undefined ? {} : { text: parsed.data.text }),
+					attachmentIds: parsed.data.attachmentIds,
+					traceId: request.id,
+				});
+				send({
+					type: "conversation.snapshot",
+					threadId: snapshot.threadId,
+					traceId: snapshot.trace.traceId,
+					revision: snapshot.revision,
+					payload: snapshot,
+				});
+			} catch {
+				send({
+					type: "problem",
+					threadId: parsed.data.threadId ?? null,
+					traceId: request.id,
+					revision: null,
+					payload: { code: "SVC-CORE-4003" },
+				});
+			}
+		});
+		socket.on("close", unsubscribe);
 	});
 }

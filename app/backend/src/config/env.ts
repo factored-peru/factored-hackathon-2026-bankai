@@ -41,8 +41,44 @@ export const envSchema = z.object({
 	DATABASE_READONLY_URL: z.string().default(""),
 	FIRESTORE_ENABLED: envBoolean.default(false),
 	BIGQUERY_ENABLED: envBoolean.default(false),
+	// Structured RAG: tables are fully qualified from these, never from a prompt.
+	BIGQUERY_DATASET: z.string().default(""),
+	BIGQUERY_JOB_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.positive()
+		.max(60_000)
+		.default(30_000),
+	STRUCTURED_CATALOG_PATH: z.string().default("config/structured-catalog.json"),
 	GCS_ENABLED: envBoolean.default(false),
 	GCS_GRAPH_ARTIFACT_PREFIX: z.string().default("knowledge-graph/"),
+	CHAT_ENABLED: envBoolean.default(false),
+	/** Product chat is opt-in and cannot silently fall back to demo mode. */
+	AGENTIC_CHAT_ENABLED: envBoolean.default(false),
+	/** Process-selected runner; the browser never chooses the pipeline. */
+	CHAT_PIPELINE: z.enum(["demo", "baseline"]).default("demo"),
+	/** Explicit opt-in for the deliberately ungated comparative baseline. */
+	BASELINE_CHAT_ENABLED: envBoolean.default(false),
+	BASELINE_QUERY_CATALOG_PATH: z
+		.string()
+		.default("config/structured-catalog.example.json"),
+	BASELINE_MAX_RETRIEVAL_ATTEMPTS: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(2)
+		.default(2),
+	REALTIME_ENABLED: envBoolean.default(false),
+	DEMO_AUTH_ENABLED: envBoolean.default(false),
+	DEMO_ACTOR_HMAC_KEY: z.string().default(""),
+	GCS_UPLOAD_BUCKET: z.string().default(""),
+	GCS_UPLOAD_PREFIX: z.string().default("conversation-uploads/"),
+	CHAT_MAX_ATTACHMENT_BYTES: z.coerce
+		.number()
+		.int()
+		.positive()
+		.default(10 * 1024 * 1024),
+	CHAT_MAX_ATTACHMENTS: z.coerce.number().int().positive().max(3).default(3),
 
 	// Google Cloud uses ADC/IAM for server-to-server calls, not an API key.
 	GOOGLE_CLOUD_PROJECT: z.string().default(""),
@@ -66,6 +102,14 @@ export const envSchema = z.object({
 	JEV_BASE_URL: z.string().default(""),
 	JEV_API_KEY: z.string().default(""),
 	JEV_MODEL: z.string().default(""),
+	// Below this confidence a choice is treated as ambiguous, not executed.
+	JEV_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.7),
+	JEV_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.positive()
+		.max(60_000)
+		.default(10_000),
 	OPENAI_ENABLED: envBoolean.default(false),
 	OPENAI_BASE_URL: z.string().default("https://api.openai.com/v1"),
 	OPENAI_API_KEY: z.string().default(""),
@@ -116,6 +160,10 @@ type TomlSettings = {
 		database_enabled?: unknown;
 		bucket_enabled?: unknown;
 		cache_enabled?: unknown;
+		demo_auth_enabled?: unknown;
+		realtime_enabled?: unknown;
+		cors_allowed_origins?: unknown;
+		session_cookie_name?: unknown;
 	};
 	profiles?: Record<string, TomlSettings>;
 };
@@ -160,6 +208,18 @@ export function flattenTomlSettings(
 		...(app.cache_enabled !== undefined
 			? { CACHE_ENABLED: app.cache_enabled }
 			: {}),
+		...(app.demo_auth_enabled !== undefined
+			? { DEMO_AUTH_ENABLED: app.demo_auth_enabled }
+			: {}),
+		...(app.realtime_enabled !== undefined
+			? { REALTIME_ENABLED: app.realtime_enabled }
+			: {}),
+		...(app.cors_allowed_origins !== undefined
+			? { CORS_ALLOWED_ORIGINS: app.cors_allowed_origins }
+			: {}),
+		...(app.session_cookie_name !== undefined
+			? { SESSION_COOKIE_NAME: app.session_cookie_name }
+			: {}),
 		...(profileApp.name !== undefined ? { APP_NAME: profileApp.name } : {}),
 		...(profileApp.env !== undefined ? { APP_ENV: profileApp.env } : {}),
 		...(profileApp.host !== undefined ? { HOST: profileApp.host } : {}),
@@ -175,6 +235,18 @@ export function flattenTomlSettings(
 			: {}),
 		...(profileApp.cache_enabled !== undefined
 			? { CACHE_ENABLED: profileApp.cache_enabled }
+			: {}),
+		...(profileApp.demo_auth_enabled !== undefined
+			? { DEMO_AUTH_ENABLED: profileApp.demo_auth_enabled }
+			: {}),
+		...(profileApp.realtime_enabled !== undefined
+			? { REALTIME_ENABLED: profileApp.realtime_enabled }
+			: {}),
+		...(profileApp.cors_allowed_origins !== undefined
+			? { CORS_ALLOWED_ORIGINS: profileApp.cors_allowed_origins }
+			: {}),
+		...(profileApp.session_cookie_name !== undefined
+			? { SESSION_COOKIE_NAME: profileApp.session_cookie_name }
 			: {}),
 	};
 }
@@ -210,6 +282,68 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		);
 	}
 
+	if (settings.DEMO_AUTH_ENABLED && settings.APP_ENV === "prod") {
+		throw new Error("SVC-CORE-9006: DEMO_AUTH_ENABLED is forbidden in prod");
+	}
+	if (
+		settings.DEMO_AUTH_ENABLED &&
+		settings.BIGQUERY_ENABLED &&
+		settings.DEMO_ACTOR_HMAC_KEY.length === 0
+	) {
+		throw new Error(
+			"SVC-CORE-9009: DEMO_ACTOR_HMAC_KEY is required with BigQuery demo actors",
+		);
+	}
+	if (settings.REALTIME_ENABLED && settings.CORS_ALLOWED_ORIGINS.length === 0) {
+		throw new Error(
+			"SVC-CORE-9007: REALTIME_ENABLED requires CORS_ALLOWED_ORIGINS",
+		);
+	}
+	if (settings.CHAT_ENABLED && !settings.FIRESTORE_ENABLED) {
+		throw new Error("SVC-CORE-9008: CHAT_ENABLED requires FIRESTORE_ENABLED");
+	}
+	if (settings.AGENTIC_CHAT_ENABLED) {
+		const missing = [
+			["CHAT_ENABLED", settings.CHAT_ENABLED],
+			["REALTIME_ENABLED", settings.REALTIME_ENABLED],
+			["FIRESTORE_ENABLED", settings.FIRESTORE_ENABLED],
+			["SESSION_STORE_ENABLED", settings.SESSION_STORE_ENABLED],
+			["BIGQUERY_ENABLED", settings.BIGQUERY_ENABLED],
+			["JEV_ENABLED", settings.JEV_ENABLED],
+			["VERTEX_AI_ENABLED", settings.VERTEX_AI_ENABLED],
+			["MODEL_ARMOR_ENABLED", settings.MODEL_ARMOR_ENABLED],
+			["GCS_ENABLED", settings.GCS_ENABLED],
+		]
+			.filter(([, enabled]) => !enabled)
+			.map(([name]) => name);
+		if (settings.DEMO_AUTH_ENABLED) missing.push("DEMO_AUTH_ENABLED=false");
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9010: AGENTIC_CHAT_ENABLED requires ${missing.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.CHAT_PIPELINE === "baseline") {
+		const missing = [
+			["BASELINE_CHAT_ENABLED", settings.BASELINE_CHAT_ENABLED],
+			["VERTEX_AI_ENABLED", settings.VERTEX_AI_ENABLED],
+			["BIGQUERY_ENABLED", settings.BIGQUERY_ENABLED],
+			["DEMO_AUTH_ENABLED", settings.DEMO_AUTH_ENABLED],
+			["REALTIME_ENABLED", settings.REALTIME_ENABLED],
+		]
+			.filter(([, enabled]) => !enabled)
+			.map(([name]) => name);
+		if (settings.AGENTIC_CHAT_ENABLED) {
+			missing.push("AGENTIC_CHAT_ENABLED=false");
+		}
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9011: CHAT_PIPELINE=baseline requires ${missing.join(", ")}`,
+			);
+		}
+	}
+
 	if (settings.SESSION_STORE_ENABLED && settings.KV_URL.length === 0) {
 		throw new Error(
 			"SVC-CORE-9003: KV_URL is required when SESSION_STORE_ENABLED is true",
@@ -225,12 +359,79 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		);
 	}
 
+	if (settings.BIGQUERY_ENABLED) {
+		const invalid = [
+			["GOOGLE_CLOUD_PROJECT", settings.GOOGLE_CLOUD_PROJECT],
+			["BIGQUERY_DATASET", settings.BIGQUERY_DATASET],
+		]
+			.filter(([, value]) => !/^[A-Za-z0-9_-]+$/.test(value ?? ""))
+			.map(([name]) => name);
+		if (settings.GOOGLE_CLOUD_LOCATION.length === 0) {
+			invalid.push("GOOGLE_CLOUD_LOCATION");
+		}
+		if (settings.STRUCTURED_CATALOG_PATH.length === 0) {
+			invalid.push("STRUCTURED_CATALOG_PATH");
+		}
+		if (invalid.length > 0) {
+			throw new Error(
+				`SVC-CORE-9006: BIGQUERY_ENABLED requires valid ${invalid.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.JEV_ENABLED) {
+		const missing = [
+			["JEV_BASE_URL", settings.JEV_BASE_URL],
+			["JEV_API_KEY", settings.JEV_API_KEY],
+			["JEV_MODEL", settings.JEV_MODEL],
+		]
+			.filter(([, value]) => (value ?? "").length === 0)
+			.map(([name]) => name);
+		if (
+			settings.JEV_BASE_URL.length > 0 &&
+			!settings.JEV_BASE_URL.startsWith("https://")
+		) {
+			missing.push("JEV_BASE_URL (https)");
+		}
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9007: JEV_ENABLED requires valid ${missing.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.VERTEX_AI_ENABLED) {
+		const missing = [
+			["VERTEX_AI_PROJECT_ID", settings.VERTEX_AI_PROJECT_ID],
+			["VERTEX_AI_LOCATION", settings.VERTEX_AI_LOCATION],
+			["VERTEX_AI_MODEL", settings.VERTEX_AI_MODEL],
+		]
+			.filter(([, value]) => !/^[A-Za-z0-9._-]+$/.test(value ?? ""))
+			.map(([name]) => name);
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9008: VERTEX_AI_ENABLED requires valid ${missing.join(", ")}`,
+			);
+		}
+	}
+
 	if (
 		(settings.APP_ENV === "staging" || settings.APP_ENV === "prod") &&
 		!settings.SESSION_COOKIE_NAME.startsWith("__Host-")
 	) {
 		throw new Error(
 			"SVC-CORE-9004: production session cookie must use the __Host- prefix",
+		);
+	}
+
+	if (
+		settings.MODEL_ARMOR_ENABLED &&
+		(settings.MODEL_ARMOR_PROJECT_ID.length === 0 ||
+			settings.MODEL_ARMOR_LOCATION.length === 0 ||
+			settings.MODEL_ARMOR_INSPECT_TEMPLATE.length === 0)
+	) {
+		throw new Error(
+			"SVC-CORE-9006: MODEL_ARMOR_PROJECT_ID, MODEL_ARMOR_LOCATION and MODEL_ARMOR_INSPECT_TEMPLATE are required when MODEL_ARMOR_ENABLED is true",
 		);
 	}
 

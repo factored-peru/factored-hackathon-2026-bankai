@@ -1,0 +1,90 @@
+{
+	"asyncapi": "3.0.0",
+	"info": {
+		"title": "Dispute Transaction Support Realtime API",
+		"version": "0.1.0",
+		"description": "Authenticated, tenant-isolated conversation events. Content is sanitized before durable persistence."
+	},
+	"servers": {
+		"development": {
+			"host": "localhost:3000",
+			"protocol": "ws",
+			"pathname": "/v1/realtime"
+		}
+	},
+	"security": [{ "sessionCookie": [] }],
+	"channels": {
+		"conversation": {
+			"address": "/v1/realtime",
+			"messages": {
+				"chatSend": { "payload": { "$ref": "#/components/schemas/ChatSend" } },
+				"conversationSubscribe": {
+					"payload": { "$ref": "#/components/schemas/ConversationSubscribe" }
+				},
+				"serverEvent": {
+					"payload": { "$ref": "#/components/schemas/ServerEvent" }
+				}
+			}
+		}
+	},
+	"components": {
+		"securitySchemes": {
+			"sessionCookie": {
+				"type": "httpApiKey",
+				"in": "cookie",
+				"name": "bankai-demo-session",
+				"description": "Created locally by POST /v1/demo/sessions; the browser sends it during the WebSocket handshake."
+			}
+		},
+		"schemas": {
+			"ChatSend": {
+				"type": "object",
+				"required": ["type", "clientMessageId"],
+				"properties": {
+					"type": { "const": "chat.send" },
+					"threadId": { "type": "string" },
+					"clientMessageId": { "type": "string", "maxLength": 128 },
+					"text": { "type": "string", "maxLength": 16000 },
+					"attachmentIds": {
+						"type": "array",
+						"maxItems": 3,
+						"items": { "type": "string" }
+					}
+				},
+				"additionalProperties": false
+			},
+			"ConversationSubscribe": {
+				"type": "object",
+				"required": ["type", "threadId"],
+				"properties": {
+					"type": { "const": "conversation.subscribe" },
+					"threadId": { "type": "string" }
+				},
+				"additionalProperties": false
+			},
+			"ServerEvent": {
+				"type": "object",
+				"required": ["type", "threadId", "traceId", "revision", "payload"],
+				"properties": {
+					"type": {
+						"enum": [
+							"session.ready",
+							"conversation.snapshot",
+							"run.state",
+							"assistant.delta",
+							"assistant.completed",
+							"hitl.created",
+							"backoffice.alert",
+							"problem"
+						]
+					},
+					"threadId": { "type": ["string", "null"] },
+					"traceId": { "type": ["string", "null"] },
+					"revision": { "type": ["integer", "null"] },
+					"payload": {}
+				},
+				"additionalProperties": false
+			}
+		}
+	}
+}

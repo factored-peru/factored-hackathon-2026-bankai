@@ -25,6 +25,17 @@ export type EvaluationContext = Readonly<{
 	resultVerified: boolean;
 	policyVersion: string;
 	catalogVersion: string | null;
+	/** Optional metadata from a comparative runner; never prompt or response. */
+	pipeline?: "baseline" | "controlled";
+	durationMs?: number;
+	modelCallCount?: number;
+	controlPlaneInvoked?: boolean;
+	privacyGateInvoked?: boolean;
+	guardrailInvoked?: boolean;
+	retrievalInvoked?: boolean;
+	retrievalAttemptCount?: number;
+	retrievalSuccessCount?: number;
+	errorCode?: string | null;
 }>;
 
 export type EvaluationResult = Readonly<{

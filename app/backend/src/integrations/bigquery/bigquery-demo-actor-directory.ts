@@ -1,0 +1,103 @@
+import { createHmac } from "node:crypto";
+import type { BigQuery } from "@google-cloud/bigquery";
+import type { DemoActorDirectory } from "../../services/ports/conversation.js";
+
+type CustomerRow = { customer_id?: unknown };
+
+/**
+ * Closed demo cohort query. It only returns customer identifiers inside the
+ * backend, then converts them to opaque HMAC aliases before the HTTP boundary.
+ */
+export class BigQueryDemoActorDirectory implements DemoActorDirectory {
+	constructor(
+		private readonly bigquery: BigQuery,
+		private readonly project: string,
+		private readonly dataset: string,
+		private readonly hmacKey: string,
+	) {}
+
+	async list() {
+		const customers = await this.customers();
+		return [
+			...customers.map((customerId, index) => ({
+				actorId: this.actorId(customerId),
+				label:
+					index === 0
+						? "Cliente demo recomendado"
+						: `Cliente demo ${index + 1}`,
+				role: "customer" as const,
+				recommended: index === 0,
+			})),
+			{
+				actorId: "demo-backoffice-1",
+				label: "Backoffice demo",
+				role: "backoffice" as const,
+				recommended: false,
+			},
+		];
+	}
+
+	async resolve(actorId: string) {
+		if (actorId === "demo-backoffice-1")
+			return {
+				userId: actorId,
+				tenantId: "demo-bankai",
+				roles: ["backoffice"],
+				capabilities: [
+					"dispute:read",
+					"conversation:read:any",
+					"dispute.escalation.decide",
+				],
+			};
+		const customer = (await this.customers()).find(
+			(customerId) => this.actorId(customerId) === actorId,
+		);
+		return customer
+			? {
+					userId: actorId,
+					tenantId: "demo-bankai",
+					roles: ["customer"],
+					capabilities: ["dispute:read", "conversation:write"],
+				}
+			: null;
+	}
+
+	/** Server-only alias resolution; no customer ID crosses the HTTP boundary. */
+	async customerIdForActor(actorId: string): Promise<string | null> {
+		if (actorId === "demo-backoffice-1") return null;
+		return (
+			(await this.customers()).find(
+				(customerId) => this.actorId(customerId) === actorId,
+			) ?? null
+		);
+	}
+
+	private async customers(): Promise<string[]> {
+		const query = `
+SELECT customer_id
+FROM (
+  SELECT t.customer_id
+  FROM \`${this.project}.${this.dataset}.transactions\` AS t
+  LEFT JOIN \`${this.project}.${this.dataset}.complaints\` AS c USING (customer_id)
+  WHERE t.customer_id IS NOT NULL
+  GROUP BY t.customer_id
+  HAVING COUNT(*) >= 3
+     AND COUNTIF(c.category = 'Transactions') >= 1
+  ORDER BY FARM_FINGERPRINT(CAST(t.customer_id AS STRING))
+  LIMIT 3
+)`.trim();
+		const [rows] = await this.bigquery.query({
+			query,
+			maximumBytesBilled: "50000000",
+			useLegacySql: false,
+			labels: { component: "demo_directory" },
+		});
+		return (rows as CustomerRow[]).flatMap((row) =>
+			typeof row.customer_id === "string" ? [row.customer_id] : [],
+		);
+	}
+
+	private actorId(customerId: string): string {
+		return `demo-customer-${createHmac("sha256", this.hmacKey).update(customerId).digest("base64url")}`;
+	}
+}

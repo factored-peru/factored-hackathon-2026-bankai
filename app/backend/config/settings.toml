@@ -16,6 +16,11 @@ log_level = "debug"
 database_enabled = false
 bucket_enabled = false
 cache_enabled = false
+# Local-only demo: all state and fixtures live in process memory.
+demo_auth_enabled = true
+realtime_enabled = true
+cors_allowed_origins = "http://localhost:3001,http://127.0.0.1:3001"
+session_cookie_name = "bankai-demo-session"
 
 [profiles.staging.app]
 env = "staging"

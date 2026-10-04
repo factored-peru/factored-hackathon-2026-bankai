@@ -12,6 +12,11 @@ export interface KnowledgeRetriever {
 	search(query: RetrievalQuery): Promise<KnowledgeChunk[]>;
 }
 
+/** Raw, unvalidated catalog document; validation happens in the loader. */
+export interface QueryCatalogSource {
+	read(): Promise<unknown>;
+}
+
 export interface QueryPlanExecutor {
 	execute(
 		plan: StructuredQueryResolution & { status: "ready" },

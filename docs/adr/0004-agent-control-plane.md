@@ -4,13 +4,6 @@
 
 Accepted
 
-## Evolución
-
-La decisión se precisó para expresar las rutas reales del `StateGraph` y el
-orden de sus gates. La formulación anterior dejaba la ruta autorizada genérica;
-la actual elimina esa ambigüedad porque el routing y la policy deben ser
-auditables antes de invocar recuperación o un modelo.
-
 ## Context
 
 Dispute Transaction Support combina conversación, evidencia estructurada de
@@ -27,7 +20,7 @@ sesión -> normalización/privacidad -> Model Armor -> JEV primario
   llm -> policy -> respuesta
   database -> catálogo Structured -> JEV Structured -> policy -> Structured RAG
   relations -> catálogo KG -> JEV KG -> policy -> KG-RAG
-  ood -> respuesta segura
+  ood -> policy -> respuesta segura
 ```
 
 - Firebase Auth aporta identidad; el backend resuelve tenant, rol y
@@ -48,6 +41,18 @@ sesión -> normalización/privacidad -> Model Armor -> JEV primario
 - El primer flujo operativo sólo consulta evidencia autorizada y solicita un
   escalamiento mock sujeto a aprobación de operador. Presentar, cancelar o
   modificar una disputa bancaria es una capacidad DENY y no tiene herramienta.
+
+El baseline comparativo `CHAT_PIPELINE=baseline` está fuera de este control
+plane, no lo sustituye ni cambia su secuencia normativa. Es un
+`ConversationRunner` aislado, habilitado sólo por configuración del proceso y
+con opt-in adicional. Para poder comparar chat factual mínimo, recibe texto,
+DDL estático y un tool nativo que ejecuta hasta dos `QueryPlan` de ejemplo. El
+backend inyecta la identidad del actor demo y conserva límites del plan; el
+modelo no compone SQL ni selecciona cliente. Las filas sí llegan al modelo y
+por ello el alcance se limita a tráfico/datos sintéticos o previamente
+aprobados para medición. Por diseño omite privacidad, Model Armor, JEV, policy,
+filtro por rol, evidencia y `StateGraph`. Su existencia no autoriza una ruta
+bancaria factual, de recuperación o de acciones sin las fronteras de esta ADR.
 
 ## Consequences
 

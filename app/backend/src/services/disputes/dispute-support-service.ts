@@ -177,6 +177,7 @@ export class DisputeSupportService {
 		return (
 			value.tenantId === session.tenantId &&
 			(session.roles.includes("operator") ||
+				session.roles.includes("backoffice") ||
 				value.ownerUserId === session.userId)
 		);
 	}

@@ -97,6 +97,28 @@ port = 9001
 		expect(settings.LOG_LEVEL).toBe("warn");
 	});
 
+	test("development profile can enable the self-contained browser demo", () => {
+		const values = flattenTomlSettings({
+			app: { env: "dev" },
+			profiles: {
+				dev: {
+					app: {
+						demo_auth_enabled: true,
+						realtime_enabled: true,
+						cors_allowed_origins: "http://localhost:3001,http://127.0.0.1:3001",
+						session_cookie_name: "bankai-demo-session",
+					},
+				},
+			},
+		});
+		const settings = envSchema.parse(values);
+
+		expect(settings.DEMO_AUTH_ENABLED).toBe(true);
+		expect(settings.REALTIME_ENABLED).toBe(true);
+		expect(settings.CORS_ALLOWED_ORIGINS).toContain("localhost:3001");
+		expect(settings.SESSION_COOKIE_NAME).toBe("bankai-demo-session");
+	});
+
 	test("production requires a service token", () => {
 		const settings = envSchema.parse({ APP_ENV: "prod" });
 
@@ -157,6 +179,103 @@ port = 9001
 
 	test("rejects an unknown key-value provider", () => {
 		expect(() => envSchema.parse({ KV_PROVIDER: "unknown" })).toThrow();
+	});
+
+	test("BigQuery defaults keep Structured RAG disabled and safe", () => {
+		const settings = envSchema.parse({});
+
+		expect(settings.BIGQUERY_ENABLED).toBe(false);
+		expect(settings.BIGQUERY_DATASET).toBe("");
+		expect(settings.BIGQUERY_JOB_TIMEOUT_MS).toBe(30_000);
+		expect(settings.STRUCTURED_CATALOG_PATH).toBe(
+			"config/structured-catalog.json",
+		);
+		expect(validateRuntimeConfiguration(settings)).toBe(settings);
+	});
+
+	test("enabled BigQuery names every missing or invalid setting", () => {
+		const settings = envSchema.parse({ BIGQUERY_ENABLED: true });
+
+		expect(() => validateRuntimeConfiguration(settings)).toThrow(
+			"SVC-CORE-9006: BIGQUERY_ENABLED requires valid GOOGLE_CLOUD_PROJECT, BIGQUERY_DATASET, GOOGLE_CLOUD_LOCATION",
+		);
+	});
+
+	test("enabled BigQuery rejects names that could alter a qualified table", () => {
+		const settings = envSchema.parse({
+			BIGQUERY_ENABLED: true,
+			GOOGLE_CLOUD_PROJECT: "proj",
+			GOOGLE_CLOUD_LOCATION: "us-central1",
+			BIGQUERY_DATASET: "data`; DROP",
+		});
+
+		expect(() => validateRuntimeConfiguration(settings)).toThrow(
+			"requires valid BIGQUERY_DATASET",
+		);
+	});
+
+	test("enabled BigQuery accepts a complete configuration", () => {
+		const settings = envSchema.parse({
+			BIGQUERY_ENABLED: true,
+			GOOGLE_CLOUD_PROJECT: "proj",
+			GOOGLE_CLOUD_LOCATION: "us-central1",
+			BIGQUERY_DATASET: "data",
+		});
+
+		expect(validateRuntimeConfiguration(settings)).toBe(settings);
+	});
+
+	test("enabled JEV names every missing setting and requires https", () => {
+		expect(() =>
+			validateRuntimeConfiguration(envSchema.parse({ JEV_ENABLED: true })),
+		).toThrow(
+			"SVC-CORE-9007: JEV_ENABLED requires valid JEV_BASE_URL, JEV_API_KEY, JEV_MODEL",
+		);
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					JEV_ENABLED: true,
+					JEV_BASE_URL: "http://api.example.test",
+					JEV_API_KEY: "k",
+					JEV_MODEL: "m",
+				}),
+			),
+		).toThrow("JEV_BASE_URL (https)");
+	});
+
+	test("JEV defaults are conservative and disabled", () => {
+		const settings = envSchema.parse({});
+
+		expect(settings.JEV_ENABLED).toBe(false);
+		expect(settings.JEV_MIN_CONFIDENCE).toBe(0.7);
+		expect(settings.JEV_TIMEOUT_MS).toBe(10_000);
+		expect(() => envSchema.parse({ JEV_MIN_CONFIDENCE: 1.5 })).toThrow();
+	});
+
+	test("enabled Vertex AI requires project, location and model", () => {
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({ VERTEX_AI_ENABLED: true }),
+			),
+		).toThrow(
+			"SVC-CORE-9008: VERTEX_AI_ENABLED requires valid VERTEX_AI_PROJECT_ID, VERTEX_AI_LOCATION, VERTEX_AI_MODEL",
+		);
+		expect(
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					VERTEX_AI_ENABLED: true,
+					VERTEX_AI_PROJECT_ID: "proj",
+					VERTEX_AI_LOCATION: "us-central1",
+					VERTEX_AI_MODEL: "some-model",
+				}),
+			).VERTEX_AI_ENABLED,
+		).toBe(true);
+	});
+
+	test("rejects a BigQuery job timeout above one minute", () => {
+		expect(() =>
+			envSchema.parse({ BIGQUERY_JOB_TIMEOUT_MS: 120_000 }),
+		).toThrow();
 	});
 
 	test("production sessions require the __Host cookie prefix", () => {

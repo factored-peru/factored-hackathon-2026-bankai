@@ -1,42 +1,63 @@
 import { z } from "zod";
-import { dataClassificationSchema } from "../../domain/control/contracts.js";
-import type { QueryPlan } from "../../domain/data/query-plan.js";
+import type { QueryCatalogEntry } from "../../domain/data/query-catalog.js";
 import type { SessionContext } from "../../domain/session.js";
-import type { StructuredQueryPlanCatalog } from "../data/structured-query-plan-catalog.js";
-import type { QueryPlanExecutor } from "../ports/retrieval.js";
+import { bindQueryParameters } from "../data/query-parameter-binder.js";
+import type { CustomerIdentityResolver } from "../ports/customer-identity.js";
+import type { StructuredQueryExecutor } from "../ports/structured-query.js";
 import { BaseRag, type RagExecutionResult } from "./base-rag.js";
 import type { RagCatalog } from "./rag-catalog.js";
+import { buildEvidence, toModelEvidence } from "./structured-evidence.js";
 
-export const structuredEvidenceDtoSchema = z
-	.object({
-		content: z.string().min(1),
-		documentRef: z.string().min(1),
-		sourceType: z.literal("bigquery_structured"),
-		classification: dataClassificationSchema,
-		contentHash: z.string().min(1),
-	})
-	.strict();
-export type StructuredEvidenceDto = z.infer<typeof structuredEvidenceDtoSchema>;
+export const structuredSelectionSchema = z.discriminatedUnion("decision", [
+	z
+		.object({
+			decision: z.literal("select"),
+			queryId: z.string().min(1),
+			version: z.string().min(1),
+			parameters: z.record(z.string(), z.unknown()),
+		})
+		.strict(),
+	z.object({ decision: z.literal("ambiguous") }).strict(),
+	z.object({ decision: z.literal("deny") }).strict(),
+]);
+export type StructuredSelection = z.infer<typeof structuredSelectionSchema>;
 
-/** The specialized Jev may select an ID and scalar values, never SQL. */
 export interface StructuredQuerySelector {
 	select(input: {
 		query: string;
 		catalog: RagCatalog;
 		traceId: string;
-	}): Promise<QueryPlan | null>;
+	}): Promise<unknown>;
 }
 
-/** Structured RAG is a closed BigQuery catalog, never text-to-SQL. */
+export interface StructuredQueryEntries {
+	resolve(input: {
+		session: SessionContext;
+		queryId: string;
+		version: string;
+	}): Promise<QueryCatalogEntry | null>;
+}
+
+export type StructuredRagDependencies = Readonly<{
+	selector: StructuredQuerySelector;
+	entries: StructuredQueryEntries;
+	identity: CustomerIdentityResolver;
+	executor: StructuredQueryExecutor;
+	now?: () => Date;
+}>;
+
+function failed(reasonCode: string): RagExecutionResult {
+	return { status: "failed", reasonCode };
+}
+
+/** Closed, catalog-based BigQuery retrieval. SQL and identity bindings are never model input. */
 export class StructuredRag extends BaseRag {
 	readonly kind = "structured" as const;
+	private readonly now: () => Date;
 
-	constructor(
-		private readonly selector: StructuredQuerySelector,
-		private readonly plans: StructuredQueryPlanCatalog,
-		private readonly executor: QueryPlanExecutor,
-	) {
+	constructor(private readonly dependencies: StructuredRagDependencies) {
 		super();
+		this.now = dependencies.now ?? (() => new Date());
 	}
 
 	async execute(input: {
@@ -45,56 +66,65 @@ export class StructuredRag extends BaseRag {
 		catalog: RagCatalog;
 		traceId: string;
 	}): Promise<RagExecutionResult> {
-		if (
-			input.catalog.kind !== this.kind ||
-			input.catalog.version !== this.plans.version
-		) {
-			return { status: "failed", reasonCode: "structured_catalog_mismatch" };
-		}
-		let selected: QueryPlan | null;
+		if (input.catalog.kind !== this.kind)
+			return failed("structured_catalog_mismatch");
+		let proposal: unknown;
 		try {
-			selected = await this.selector.select({
+			proposal = await this.dependencies.selector.select({
 				query: input.query,
 				catalog: input.catalog,
 				traceId: input.traceId,
 			});
 		} catch {
-			return {
-				status: "failed",
-				reasonCode: "structured_selection_unavailable",
-			};
+			return failed("structured_selection_unavailable");
 		}
-		if (
-			selected === null ||
-			!input.catalog.entries.some((entry) => entry.id === selected.queryId)
-		) {
-			return { status: "failed", reasonCode: "structured_query_not_selected" };
-		}
-		const resolved = this.plans.resolve(selected, input.session);
-		if (resolved.status !== "ready") {
-			return { status: "failed", reasonCode: resolved.reasonCode };
-		}
-		try {
-			const rows = await this.executor.execute(
-				resolved,
-				input.session.tenantId,
+		const selection = structuredSelectionSchema.safeParse(proposal);
+		if (!selection.success) return failed("structured_selection_invalid");
+		if (selection.data.decision === "ambiguous")
+			return failed("structured_selection_ambiguous");
+		if (selection.data.decision === "deny")
+			return failed("structured_query_not_selected");
+		const { queryId, version, parameters } = selection.data;
+		const listed = input.catalog.entries.some(
+			(entry) => entry.id === queryId && entry.version === version,
+		);
+		const entry = listed
+			? await this.dependencies.entries.resolve({
+					session: input.session,
+					queryId,
+					version,
+				})
+			: null;
+		if (entry === null) return failed("structured_query_not_authorized");
+		const bound = bindQueryParameters(entry, {
+			caller: parameters,
+			customerId: await this.dependencies.identity.resolve(input.session),
+			tenantId: input.session.tenantId,
+		});
+		if (bound.status !== "ready")
+			return failed(
+				bound.reasonCode === "query_parameter_missing"
+					? "structured_parameters_missing"
+					: bound.reasonCode === "query_customer_unlinked"
+						? "structured_customer_unlinked"
+						: "structured_parameters_invalid",
 			);
-			const evidence = z.array(structuredEvidenceDtoSchema).safeParse(rows);
-			if (!evidence.success) {
-				return { status: "failed", reasonCode: "structured_evidence_invalid" };
-			}
-			return evidence.data.every(
-				(item) =>
-					item.documentRef ===
-					`${resolved.definition.queryId}:${resolved.definition.version}`,
-			)
-				? { status: "ready", evidence: evidence.data }
-				: {
-						status: "failed",
-						reasonCode: "structured_evidence_provenance_invalid",
-					};
-		} catch {
-			return { status: "failed", reasonCode: "structured_query_unavailable" };
-		}
+		const result = await this.dependencies.executor.execute({
+			entry,
+			parameters: bound.values,
+			traceId: input.traceId,
+		});
+		if (result.status !== "ready")
+			return failed(`structured_${result.reasonCode}`);
+		const evidence = buildEvidence({
+			entry,
+			catalogVersion: input.catalog.version,
+			filters: bound.filters,
+			result,
+			retrievedAt: this.now(),
+		});
+		return evidence === null
+			? failed("structured_evidence_invalid")
+			: { status: "ready", evidence: [toModelEvidence(evidence)] };
 	}
 }
