@@ -963,7 +963,9 @@
 									"properties": {
 										"versions": {
 											"type": "array",
-											"items": { "$ref": "#/components/schemas/KgVersionSummary" }
+											"items": {
+												"$ref": "#/components/schemas/KgVersionSummary"
+											}
 										}
 									},
 									"additionalProperties": false
@@ -1644,7 +1646,10 @@
 							"kg-operation-catalog.json"
 						],
 						"properties": {
-							"graph-v1.msgpack": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+							"graph-v1.msgpack": {
+								"type": "string",
+								"pattern": "^[a-f0-9]{64}$"
+							},
 							"graph-manifest.json": {
 								"type": "string",
 								"pattern": "^[a-f0-9]{64}$"

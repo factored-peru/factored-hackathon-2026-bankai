@@ -1,17 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { encode } from "@msgpack/msgpack";
-import { createHash } from "node:crypto";
+import type { SessionContext } from "../src/domain/session.js";
 import { LocalKnowledgeGraphArtifactRepository } from "../src/integrations/kg/local-knowledge-graph-runtime.js";
-import { KnowledgeGraphRag } from "../src/services/retrieval/knowledge-graph-rag.js";
 import {
 	createRagRetrievalRuntime,
 	denyKnowledgeGraphSelector,
 } from "../src/services/control-plane/rag-retrieval-runtime.js";
 import { ragThreadConfig } from "../src/services/control-plane/rag-state-graph.js";
-import type { SessionContext } from "../src/domain/session.js";
+import { KnowledgeGraphRag } from "../src/services/retrieval/knowledge-graph-rag.js";
 
 const session: SessionContext = {
 	sessionId: "session-kg",
@@ -212,10 +212,12 @@ describe("createRagRetrievalRuntime", () => {
 	});
 
 	test("default KG JEV denies until a production selector is injected", async () => {
-		expect(await denyKnowledgeGraphSelector.select({
-			query: "x",
-			catalog: { kind: "knowledge_graph", version: "v1", entries: [] },
-			traceId: "t",
-		})).toEqual({ decision: "deny" });
+		expect(
+			await denyKnowledgeGraphSelector.select({
+				query: "x",
+				catalog: { kind: "knowledge_graph", version: "v1", entries: [] },
+				traceId: "t",
+			}),
+		).toEqual({ decision: "deny" });
 	});
 });
