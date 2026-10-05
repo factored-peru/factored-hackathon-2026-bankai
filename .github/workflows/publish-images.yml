@@ -32,6 +32,8 @@ jobs:
   publish:
     name: build-push-update
     runs-on: ubuntu-latest
+    # Vars live in GitHub Environment "ci-cd-factored" (not repo-level vars).
+    environment: ci-cd-factored
     if: ${{ vars.GCP_PROJECT_ID != '' && vars.WIF_PROVIDER != '' && vars.WIF_SERVICE_ACCOUNT != '' }}
     outputs:
       backend_digest: ${{ steps.backend.outputs.digest }}
@@ -125,8 +127,10 @@ jobs:
   skipped:
     name: skip-when-wif-unset
     runs-on: ubuntu-latest
+    environment: ci-cd-factored
     if: ${{ vars.GCP_PROJECT_ID == '' || vars.WIF_PROVIDER == '' || vars.WIF_SERVICE_ACCOUNT == '' }}
     steps:
       - run: |
-          echo "Skipping publish: set repository variables GCP_PROJECT_ID, GCP_REGION, WIF_PROVIDER, WIF_SERVICE_ACCOUNT"
+          echo "Skipping publish: set Environment variables on ci-cd-factored:"
+          echo "GCP_PROJECT_ID, GCP_REGION, WIF_PROVIDER, WIF_SERVICE_ACCOUNT"
           echo "See deploy/docs/github-wif.md"
