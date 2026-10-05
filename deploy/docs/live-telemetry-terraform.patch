@@ -1,0 +1,193 @@
+diff --git a/deploy/terraform/environments/dev/main.tf b/deploy/terraform/environments/dev/main.tf
+index 5709187..c7323fe 100644
+--- a/deploy/terraform/environments/dev/main.tf
++++ b/deploy/terraform/environments/dev/main.tf
+@@ -18,17 +18,18 @@ module "state" {
+ module "runtime" {
+   source = "../../modules/runtime"
+ 
+-  project_id              = var.project_id
+-  region                  = var.region
+-  name_prefix             = var.name_prefix
+-  backend_image           = var.backend_image
+-  pipeline_image          = var.pipeline_image
+-  kg_artifact_bucket_name = var.kg_artifact_bucket_name
+-  backend_environment     = var.backend_environment
+-  pipeline_environment    = var.pipeline_environment
+-  upload_bucket_name      = module.state.upload_bucket_name
+-  kv_url                  = module.state.kv_url
+-  vpc_connector_id        = module.state.vpc_connector_id
++  project_id                 = var.project_id
++  region                     = var.region
++  name_prefix                = var.name_prefix
++  backend_image              = var.backend_image
++  pipeline_image             = var.pipeline_image
++  kg_artifact_bucket_name    = var.kg_artifact_bucket_name
++  backend_environment        = var.backend_environment
++  backend_secret_environment = var.backend_secret_environment
++  pipeline_environment       = var.pipeline_environment
++  upload_bucket_name         = module.state.upload_bucket_name
++  kv_url                     = module.state.kv_url
++  vpc_connector_id           = module.state.vpc_connector_id
+ }
+ 
+ resource "google_storage_bucket_iam_member" "backend_upload_writer" {
+diff --git a/deploy/terraform/environments/dev/terraform.tfvars.example b/deploy/terraform/environments/dev/terraform.tfvars.example
+index 4da5029..d9d8737 100644
+--- a/deploy/terraform/environments/dev/terraform.tfvars.example
++++ b/deploy/terraform/environments/dev/terraform.tfvars.example
+@@ -28,10 +28,25 @@ backend_environment = {
+ }
+ 
+ # GCS_GRAPH_BUCKET is injected by the runtime module from kg_artifacts.
+-# The module also creates the evaluation dataset and table (ADR 0015). Writing
+-# to them is opt-in and needs BIGQUERY_ENABLED=true; to enable it add to
+-# backend_environment: BIGQUERY_EVAL_DATASET = "bankai_evaluation" and
+-# BIGQUERY_EVAL_TABLE = "evaluation_results".
++# The module also creates the evaluation dataset and table (ADR 0015). Live
++# telemetry of the baseline chat (ADR 0012) is opt-in and stays commented out
++# here so this example is inert. To enable it, add the plain flags to
++# backend_environment (BIGQUERY_ENABLED must be true; OTEL_ENABLED and
++# LANGFUSE_ENABLED go together; the eval dataset must differ from the
++# customer-data dataset):
++#   OTEL_ENABLED          = "true"
++#   LANGFUSE_ENABLED      = "true"
++#   BIGQUERY_EVAL_DATASET = "bankai_evaluation"
++#   BIGQUERY_EVAL_TABLE   = "evaluation_results"
++# and declare the keys as Secret Manager references (never values; the secrets
++# must already exist, and the module lets the backend account read them):
++# backend_secret_environment = {
++#   LANGFUSE_PUBLIC_KEY      = { secret = "langfuse-public-key" }
++#   LANGFUSE_SECRET_KEY      = { secret = "langfuse-secret-key" }
++#   TELEMETRY_CORRELATOR_KEY = { secret = "telemetry-correlator-key" }
++# }
++# Terraform owns the service environment: a variable or secret added by hand
++# is removed on the next apply, so every one must be declared here.
+ # GCS_GRAPH_BUCKET, GCS_UPLOAD_BUCKET, FIRESTORE_ENABLED, GCS_ENABLED,
+ # SESSION_STORE_ENABLED, KV_URL, KV_PROVIDER are injected by modules.
+ pipeline_environment = {}
+diff --git a/deploy/terraform/environments/dev/variables.tf b/deploy/terraform/environments/dev/variables.tf
+index 559075a..6b789fd 100644
+--- a/deploy/terraform/environments/dev/variables.tf
++++ b/deploy/terraform/environments/dev/variables.tf
+@@ -34,6 +34,15 @@ variable "backend_environment" {
+   default = {}
+ }
+ 
++variable "backend_secret_environment" {
++  type = map(object({
++    secret  = string
++    version = optional(string, "latest")
++  }))
++  default     = {}
++  description = "Secret Manager references for the backend: env name => { secret id, version }. No values."
++}
++
+ variable "pipeline_environment" {
+   type    = map(string)
+   default = {}
+diff --git a/deploy/terraform/modules/runtime/README.md b/deploy/terraform/modules/runtime/README.md
+index b4fbd67..ac49249 100644
+--- a/deploy/terraform/modules/runtime/README.md
++++ b/deploy/terraform/modules/runtime/README.md
+@@ -10,9 +10,18 @@ La imagen del service/job tiene `lifecycle.ignore_changes` para que CI pueda
+ rotar digests sin que el próximo `apply` los revierta. Terraform sigue siendo
+ dueño de env, VPC e IAM.
+ 
+-No habilita APIs, no crea Scheduler/Eventarc/Cloud Tasks y no guarda secretos:
+-`SERVICE_TOKEN` y `PRIVATE_DATA_ENCRYPTION_KEY` viven en Secret Manager / CI.
+-Ver [`docs/staging-flag-matrix.md`](../../../docs/staging-flag-matrix.md).
++No habilita APIs, no crea Scheduler/Eventarc/Cloud Tasks y no guarda valores de
++secretos: viven en Secret Manager. Ver
++[`docs/staging-flag-matrix.md`](../../../docs/staging-flag-matrix.md).
++
++`backend_secret_environment` declara los secretos como referencias
++(`nombre de variable => { secret, version }`, `latest` por defecto) que Cloud Run
++resuelve al arrancar; el valor nunca pasa por Terraform ni por su estado. El
++módulo da a la cuenta del backend `roles/secretmanager.secretAccessor` sobre
++cada secreto referenciado (una asignación aditiva) y rechaza que un mismo
++nombre sea a la vez variable en claro y secreto. Como `ignore_changes` cubre
++sólo la imagen, **todo lo que se añada a mano al servicio (variables o
++secretos) se elimina en el siguiente `apply`**: debe declararse aquí.
+ 
+ `evaluation_results.tf` declara el dataset `evaluation_dataset_id` (por defecto
+ `bankai_evaluation`, aparte del dataset de datos de clientes) y la tabla
+diff --git a/deploy/terraform/modules/runtime/main.tf b/deploy/terraform/modules/runtime/main.tf
+index 1964392..ca90cac 100644
+--- a/deploy/terraform/modules/runtime/main.tf
++++ b/deploy/terraform/modules/runtime/main.tf
+@@ -104,6 +104,21 @@ resource "google_cloud_run_v2_service" "backend" {
+           value = env.value
+         }
+       }
++
++      # Secret Manager references: the value is resolved by Cloud Run at start
++      # and never passes through Terraform state or configuration.
++      dynamic "env" {
++        for_each = var.backend_secret_environment
++        content {
++          name = env.key
++          value_source {
++            secret_key_ref {
++              secret  = env.value.secret
++              version = env.value.version
++            }
++          }
++        }
++      }
+     }
+   }
+ 
+@@ -113,13 +128,30 @@ resource "google_cloud_run_v2_service" "backend" {
+   }
+ 
+   # CI updates digests via gcloud; Terraform owns env, VPC, IAM, and scaling.
++  # Anything not declared here (plain or secret) is removed on the next apply.
+   lifecycle {
+     ignore_changes = [
+       template[0].containers[0].image,
+     ]
++
++    precondition {
++      condition     = length(setintersection(keys(local.backend_env), keys(var.backend_secret_environment))) == 0
++      error_message = "An environment variable cannot be both plain (backend_environment) and a Secret Manager reference (backend_secret_environment)."
++    }
+   }
+ }
+ 
++# The backend runs as its own service account, which must be allowed to read
++# each secret it is given. The binding is additive: it never replaces others.
++resource "google_secret_manager_secret_iam_member" "backend_secret_accessor" {
++  for_each = toset([for ref in values(var.backend_secret_environment) : ref.secret])
++
++  project   = var.project_id
++  secret_id = each.value
++  role      = "roles/secretmanager.secretAccessor"
++  member    = "serviceAccount:${google_service_account.backend.email}"
++}
++
+ resource "google_cloud_run_v2_job" "pipeline" {
+   name     = "${var.name_prefix}-pipeline"
+   location = var.region
+diff --git a/deploy/terraform/modules/runtime/variables.tf b/deploy/terraform/modules/runtime/variables.tf
+index 618e444..ce9f3ac 100644
+--- a/deploy/terraform/modules/runtime/variables.tf
++++ b/deploy/terraform/modules/runtime/variables.tf
+@@ -27,7 +27,16 @@ variable "kg_artifact_bucket_name" {
+ variable "backend_environment" {
+   type        = map(string)
+   default     = {}
+-  description = "Non-secret runtime configuration only. Secrets use Secret Manager references later."
++  description = "Non-secret runtime configuration only. Secrets go in backend_secret_environment as Secret Manager references."
++}
++
++variable "backend_secret_environment" {
++  type = map(object({
++    secret  = string
++    version = optional(string, "latest")
++  }))
++  default     = {}
++  description = "Secret Manager references injected into the backend as environment variables: env name => { secret id, version }. Only the reference lives here, never a value. A name must not also appear in backend_environment."
+ }
+ 
+ variable "pipeline_environment" {
