@@ -42,11 +42,11 @@ Resumen alineado con la auditoría del 2026-10-04 y la hoja:
 
 | Ámbito | Hallazgo |
 | --- | --- |
-| Backend | Código, contratos, demo, guardrails, control plane, SessionManager y dobles existen; `bun test` local aprueba. Falta composición productiva opt-in (Firebase Auth, Firestore, Valkey, BigQuery, Vertex, Model Armor) y pruebas de integración autorizadas. |
-| Pipeline | Preparación, KDD, Naive Bayes exploratorio, ontología, compilador y publicación local existen; `pytest` local aprueba. Faltan datos curados BigQuery, worker ADR 0020, publicación GCS y lease Firestore. |
+| Backend | Código, contratos, demo, guardrails, control plane, SessionManager y dobles existen; `bun test` local aprueba. Cloud Run staging corre **chat baseline** (`CHAT_PIPELINE=baseline`, Vertex `gemini-2.5-flash`, BigQuery, demo auth, realtime). DoD de Fase 5 sigue abierto: Firebase Auth/RBAC productivo, agentic, Model Armor y pruebas de integración autorizadas. |
+| Pipeline | Preparación, KDD, Naive Bayes exploratorio, ontología, compilador y publicación local existen; `pytest` local aprueba. En GCS ya hay `demo-bankai/current.json` + artefacto `graph-20261004-fullpop-ci`. Faltan datos curados BigQuery (`stg`/`aux`/`cur`), worker ADR 0020, lease Firestore y cierre DoD de Fases 2–4. |
 | Producto / baseline | Fase 0 cerrada. Fase 1 ejecutada sobre `factored-hackathon.hackathon`: motivos, volumen/severidad y baseline p50/p90 de resolución documentados. |
 | Evaluación | P0-40 `COMPLETED`. Matriz 48 core + 5 extensiones KG C1–C5 presente (P0-48 en progreso). CI E2E y baseline humana pendientes. |
-| Infra | Terraform declarativo parcial; sin `plan`/`apply` validado en el workspace de auditoría. Ingesta S3→GCS administrada no desplegada. |
+| Infra | Cloud Run + Job + Redis/VPC + AR vivos (ver `task-status-gcp-20261005.md`). Correlador de telemetría aún plano → no `terraform apply` hasta Secret Manager. Ingesta S3→GCS administrada no desplegada. |
 | Frontend | Sin scaffold Next.js/App Hosting en el monorepo; bloquea smoke de integración de Ricardo. |
 
 Regla de lectura: **implementación local ≠ DoD cumplido** cuando el Done exige

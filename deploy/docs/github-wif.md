@@ -56,3 +56,12 @@ Set `WIF_PROVIDER` to the full provider resource name from
 - **Not** `terraform apply`, Secret Manager secret values, or GCS publish
 
 See also [image-digests.md](image-digests.md).
+
+## Hosted runner acquisition
+
+If `Publish images` fails with conclusion `cancelled` / annotation
+*“The job was not acquired by Runner of type hosted even after multiple
+attempts”* and **zero steps ran**, that is GitHub-hosted capacity — not
+WIF, digest capture, or application build. Re-run the failed jobs or
+dispatch `publish-images.yml` manually; do not change image scripts for
+that symptom alone.
