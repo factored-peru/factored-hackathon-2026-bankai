@@ -43,10 +43,10 @@ Resumen alineado con la auditoría del 2026-10-04 y la hoja:
 | Ámbito | Hallazgo |
 | --- | --- |
 | Backend | Código, contratos, demo, guardrails, control plane, SessionManager y dobles existen; `bun test` local aprueba. Cloud Run staging corre **chat baseline** (`CHAT_PIPELINE=baseline`, Vertex `gemini-2.5-flash`, BigQuery, demo auth, realtime). DoD de Fase 5 sigue abierto: Firebase Auth/RBAC productivo, agentic, Model Armor y pruebas de integración autorizadas. |
-| Pipeline | Preparación, KDD, Naive Bayes exploratorio, ontología, compilador y publicación local existen; `pytest` local aprueba. En GCS ya hay `demo-bankai/current.json` + artefacto `graph-20261004-fullpop-ci`. Faltan datos curados BigQuery (`stg`/`aux`/`cur`), worker ADR 0020, lease Firestore y cierre DoD de Fases 2–4. |
+| Pipeline | Preparación, KDD, Naive Bayes exploratorio, ontología, compilador y publicación local existen; `pytest` local aprueba. **Fase 2 cerrada en BQ**: datasets `stg`/`aux`/`cur` desde snapshot canónico `hackathon` (`prepare-20261005-canonical`). En GCS hay `demo-bankai/current.json` + artefacto `graph-20261004-fullpop-ci`. Siguen abiertos ADR 0020 raw ingest, lease Firestore y DoD de Fases 3–4 sobre `cur`. |
 | Producto / baseline | Fase 0 cerrada. Fase 1 ejecutada sobre `factored-hackathon.hackathon`: motivos, volumen/severidad y baseline p50/p90 de resolución documentados. |
 | Evaluación | P0-40 `COMPLETED`. Matriz 48 core + 5 extensiones KG C1–C5 presente (P0-48 en progreso). CI E2E y baseline humana pendientes. |
-| Infra | Cloud Run + Job + Redis/VPC + AR vivos (ver `task-status-gcp-20261005.md`). Correlador de telemetría aún plano → no `terraform apply` hasta Secret Manager. Ingesta S3→GCS administrada no desplegada. |
+| Infra | Cloud Run + Job + Redis/VPC + AR vivos (ver `task-status-gcp-20261005.md`). Correlador de telemetría aún plano → no `terraform apply`. Ingesta S3→GCS administrada no desplegada; `raw` sigue incompleto (no bloquea capa curada canónica). |
 | Frontend | Sin scaffold Next.js/App Hosting en el monorepo; bloquea smoke de integración de Ricardo. |
 
 Regla de lectura: **implementación local ≠ DoD cumplido** cuando el Done exige
@@ -95,6 +95,11 @@ manual publicados en
 | Criterio de salida | Dataset curado aprobado, reproducible y apto para KDD, baseline y evaluación. |
 
 Estado de partida (auditoría): implementación local en progreso; DoD cloud abierto.
+
+Estado tras ejecución autorizada 2026-10-05: `bankai-pipeline --canonical-prepare
+--run-id prepare-20261005-canonical` materializó `stg`/`aux`/`cur` desde
+`hackathon` con contratos validados, perfiles agregados, imputación
+`*_was_imputed` y `cur.preparation_runs`. P0-06–10 y P0-44 `COMPLETED` en hoja.
 
 ### Fase 3 — Ingesta administrada ADR 0020
 
@@ -193,7 +198,8 @@ en la columna `Respuesta` de la hoja.
       versionados sin PII real.
 - [x] Fase 1: consultas BigQuery versionadas + baseline manual reproducible
       sobre el mismo snapshot.
-- [ ] Fase 2: contratos, perfiles, capa curada, imputación y manifests
+- [x] Fase 2: contratos, perfiles, capa curada, imputación y manifests
+  (`prepare-20261005-canonical`; P0-06–10 y P0-44 `COMPLETED` en hoja)
       aprobados en BigQuery/GCS autorizados.
 - [ ] Fase 3: flujo ADR 0020 declarado, idempotencia y plan Terraform
       validados; apply sólo con autorización.

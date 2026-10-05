@@ -1,7 +1,7 @@
 from datetime import datetime
 import unittest
 import io
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from unittest.mock import patch
 
 import pandas as pd
@@ -99,6 +99,15 @@ class PreparationTest(unittest.TestCase):
         ), redirect_stdout(output):
             main()
         self.assertIn('"cloud_execution": "not_requested"', output.getvalue())
+
+    def test_prepare_cli_without_dry_run_requires_canonical_or_adr(self) -> None:
+        err = io.StringIO()
+        with patch(
+            "sys.argv",
+            ["bankai-pipeline", "--stage", "prepare", "--run-id", "prepare-local-20261004"],
+        ), redirect_stderr(err), self.assertRaises(SystemExit):
+            main()
+        self.assertIn("--canonical-prepare", err.getvalue())
 
 
 if __name__ == "__main__":

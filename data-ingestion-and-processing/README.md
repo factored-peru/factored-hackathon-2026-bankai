@@ -74,15 +74,18 @@ documenta este aislamiento. Las etapas implementadas son `kdd`, C1
 `evaluate-supervised-suite`; siempre requieren `--run-id`.
 
 La preparación dispone además de primitivas locales deterministas para
-deduplicación, imputación y lineage. La ejecución cloud de `prepare` permanece
-cerrada hasta que el worker de ADR 0020 entregue un objeto `verified/` y un
-ledger confirmado; su dry-run describe el contrato sin leer datos.
-El modelo completo está en
+deduplicación, imputación y lineage. Hasta que ADR 0020 entregue `verified/` +
+ledger, el modo autorizado `--canonical-prepare` materializa
+`hackathon → stg → aux → cur` sobre el snapshot analítico aprobado (no sustituye
+transfer/load ni escribe en `raw`). Sin ese flag, `prepare` permanece en dry-run
+local. El modelo completo está en
 [`docs/crisp-dm-kdd-operating-model.md`](docs/crisp-dm-kdd-operating-model.md).
 
 | Objetivo | Comando | Estado y efecto |
 | --- | --- | --- |
 | Validar contrato de CLI | `bankai-pipeline --stage prepare --run-id local-dry-run --dry-run` | Disponible; no debe tocar fuentes externas. |
+| Prepare canónico (dry-run) | `bankai-pipeline --stage prepare --run-id prepare-local-canonical --dry-run --canonical-prepare` | Disponible; describe `hackathon→stg/aux/cur` sin jobs. |
+| Prepare canónico (BQ) | `bankai-pipeline --stage prepare --run-id prepare-YYYYMMDD-canonical --canonical-prepare` | Requiere autorización y ADC; crea datasets `stg`/`aux`/`cur` y manifests. |
 | Ejecutar una etapa | `bankai-pipeline --stage <etapa> --run-id <id>` | Reservado: requiere implementación de etapa, autorización y credenciales. |
 | Ejecutar ciclo completo | `bankai-pipeline --stage all --run-id <id>` | Reservado: puede transferir/publicar datos y disparar artefactos. |
 | Inventario BQ (metadata) | `python scripts/list_bigquery_tables.py --project <id>` | Read-only; no lee filas. |
@@ -115,6 +118,9 @@ Sin `--dry-run`, la etapa escribe `graph-v1.msgpack` y `graph-manifest.json`
 bajo `artifacts/graph/<run-id>/`. Para adjuntar provenance agregado de C1–C5,
 añade `--supervised-suite-artifact-dir` y las cinco opciones
 `--cN-artifact-dir`; sus checksums deben coincidir con el suite manifest.
+
+Tras un prepare canónico exitoso, las poblaciones aprobadas para la siguiente
+fase KDD viven en `cur` (no en `hackathon` ni en `raw` incompleto).
 
 ## Publicación KG-RAG (local o GCS)
 

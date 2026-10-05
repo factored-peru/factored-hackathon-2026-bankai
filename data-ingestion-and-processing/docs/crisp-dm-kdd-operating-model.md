@@ -10,7 +10,7 @@ un join heurístico ni una acción online.
 | --- | --- | --- | --- | --- |
 | Business understanding | Dispute Transaction Support | problema y tareas P0 | KPI, alcance y no-alcance | producto / backend |
 | Data understanding | contratos y perfil | metadatos BigQuery autorizados | perfil agregado y brechas | pipeline |
-| Data preparation | `prepare` | objeto `verified/` y ledger | proyección `raw → stg → aux → cur`, reglas e indicadores de imputación | pipeline |
+| Data preparation | `prepare` | objeto `verified/` + ledger **o** snapshot canónico autorizado (`--canonical-prepare` desde `hackathon`) | proyección `raw/canonical → stg → aux → cur`, reglas e indicadores de imputación | pipeline |
 | Modeling | KDD y C1–C5 | poblaciones curadas y contratos | reglas, baselines, métricas y lineage agregado | pipeline |
 | Evaluation | suite y goldens | artefactos versionados | reporte saneado, bloqueos y comparación baseline | backend / pipeline |
 | Deployment | publicación y runtime | artefacto validado | `graph-vN`, manifiesto y catálogo cerrado | pipeline / backend |
@@ -29,8 +29,17 @@ freshness. Las fechas, targets y claves no se imputan.
 
 ## Límites de despliegue
 
-El contrato local no crea vistas ni tablas. La ejecución productiva de
-`prepare` sólo se habilitará después de que ADR 0020 tenga worker de ingesta,
-objeto inmutable `verified/` e `ingestion_ledger` confirmado. Hasta entonces,
-`bankai-pipeline --stage prepare --dry-run` permite revisar la proyección y las
-reglas sin alcanzar servicios cloud.
+El contrato local no crea vistas ni tablas por sí solo. La ruta ADR 0020
+(`verified/` + `ingestion_ledger`) sigue siendo la ingestión normativa hacia
+`raw`. Mientras `raw` esté incompleto, el modo explícito
+`--canonical-prepare` autoriza materializar `stg`/`aux`/`cur` desde el dataset
+analítico aprobado `hackathon` (source_system=`bigquery_canonical`). Ese modo
+no reemplaza transfer/load ni debe usarse para escribir tablas `raw`.
+
+```bash
+bankai-pipeline --stage prepare --run-id prepare-local-canonical --dry-run --canonical-prepare
+bankai-pipeline --stage prepare --run-id prepare-YYYYMMDD-canonical --canonical-prepare
+```
+
+Sin `--canonical-prepare`, `bankai-pipeline --stage prepare --dry-run` sólo
+describe el plan local de reglas sin alcanzar BigQuery.

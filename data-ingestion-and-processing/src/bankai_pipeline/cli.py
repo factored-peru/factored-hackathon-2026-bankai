@@ -39,8 +39,14 @@ from bankai_pipeline.pipeline_lease import DEFAULT_LEASE_TTL_SECONDS, FirestoreP
 from bankai_pipeline.kdd import dry_run_plan, load_config, run_kdd
 from bankai_pipeline.metrics_report import dry_run_plan as metrics_dry_run_plan
 from bankai_pipeline.metrics_report import run_report
+from bankai_pipeline.canonical_prepare import (
+    build_config as build_canonical_prepare_config,
+    canonical_prepare_dry_run_plan,
+    run_canonical_prepare,
+)
 from bankai_pipeline.preparation import preparation_dry_run_plan
 from bankai_pipeline.suite import build as build_suite
+
 
 
 STAGES = (
@@ -170,13 +176,65 @@ def main() -> None:
     parser.add_argument("--max-added-ratio", type=float, default=0.5)
     parser.add_argument("--max-row-count-delta-ratio", type=float, default=0.25)
     parser.add_argument("--min-holdout-stable-fraction", type=float, default=0.5)
+    parser.add_argument(
+        "--canonical-prepare",
+        action="store_true",
+        help=(
+            "Authorize prepare from an approved BigQuery canonical dataset "
+            "(hackathon→stg/aux/cur) without ADR 0020 verified ingest."
+        ),
+    )
+    parser.add_argument("--source-project", default="factored-hackathon")
+    parser.add_argument("--source-dataset", default="hackathon")
+    parser.add_argument("--stg-dataset", default="stg")
+    parser.add_argument("--aux-dataset", default="aux")
+    parser.add_argument("--cur-dataset", default="cur")
+    parser.add_argument(
+        "--prepare-output-dir",
+        type=Path,
+        default=Path("artifacts/prepare"),
+        help="Local sanitized prepare manifest root.",
+    )
+    parser.add_argument(
+        "--prepare-maximum-bytes-billed",
+        type=int,
+        default=50_000_000_000,
+    )
     args = parser.parse_args()
 
     if args.stage == "prepare":
+        if args.canonical_prepare:
+            config = build_canonical_prepare_config(
+                project=args.source_project,
+                run_id=args.run_id,
+                source_dataset=args.source_dataset,
+                stg_dataset=args.stg_dataset,
+                aux_dataset=args.aux_dataset,
+                cur_dataset=args.cur_dataset,
+                output_dir=args.prepare_output_dir,
+                maximum_bytes_billed=args.prepare_maximum_bytes_billed,
+            )
+            if args.dry_run:
+                print(
+                    json.dumps(
+                        canonical_prepare_dry_run_plan(config),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
+                return
+            from google.cloud import bigquery
+
+            manifest = run_canonical_prepare(
+                bigquery.Client(project=config.project, location=config.location),
+                config,
+            )
+            print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+            return
         if not args.dry_run:
             parser.error(
-                "prepare cloud execution is unavailable until the ADR 0020 ingestion worker "
-                "has accepted a verified object and recorded the ledger"
+                "prepare cloud execution requires --canonical-prepare for the authorized "
+                "hackathon snapshot path, or ADR 0020 verified ingest + ledger"
             )
         print(
             json.dumps(
@@ -186,6 +244,7 @@ def main() -> None:
             )
         )
         return
+
 
     if args.stage == "transfer":
         if not args.dry_run:
