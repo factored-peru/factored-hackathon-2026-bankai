@@ -3,7 +3,11 @@
 CI never stores a JSON service-account key. Bind the GitHub OIDC token to the
 Terraform-created `${name_prefix}-github-ci` SA (`module.registry`).
 
-## Repo variables (Settings → Variables)
+## Repo / Environment variables
+
+Put these on the GitHub **Environment** `ci-cd-factored` (Settings →
+Environments), which `publish-images.yml` references via `environment:`.
+Repository-level Actions variables alone are **not** read by that workflow.
 
 | Variable | Example |
 | --- | --- |
