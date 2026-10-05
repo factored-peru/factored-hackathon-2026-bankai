@@ -26,7 +26,7 @@ export class UserProfileBackedActorDirectory implements DemoActorDirectory {
 		const base = await this.inner.resolve(actorId);
 		if (!base) return null;
 		const profile = await this.profiles.get(base.tenantId, base.userId);
-		if (!profile || profile.status !== "active") return base;
+		if (profile?.status !== "active") return base;
 		return {
 			userId: base.userId,
 			tenantId: base.tenantId,
