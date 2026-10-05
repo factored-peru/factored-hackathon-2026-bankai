@@ -121,6 +121,9 @@ export async function buildServer(options: BuildServerOptions = {}) {
 			: {}),
 	};
 	const app = Fastify({
+		// WebSockets are long-lived. Do not let a stale browser connection block
+		// process shutdown during a deploy or a controlled test teardown.
+		forceCloseConnections: true,
 		bodyLimit: Math.max(
 			runtimeEnv.MAX_BODY_BYTES,
 			runtimeEnv.CHAT_MAX_ATTACHMENT_BYTES,

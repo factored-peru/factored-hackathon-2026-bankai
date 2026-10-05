@@ -34,7 +34,7 @@ describe("chat client against the real server", () => {
 			onEvent: (event) => events.push(event.type),
 		});
 		const turn = await chat.send("hola, ¿cómo va mi disputa?");
-		chat.close();
+		await chat.close();
 		expect(turn.problem).toBeNull();
 		expect(turn.status).toBe("completed");
 		expect(turn.reply.length).toBeGreaterThan(0);
@@ -53,7 +53,7 @@ describe("chat client against the real server", () => {
 		});
 		const first = await chat.send("primer mensaje");
 		const second = await chat.send("segundo mensaje");
-		chat.close();
+		await chat.close();
 		expect(second.threadId).toBe(first.threadId);
 		expect(second.status).toBe("completed");
 	});

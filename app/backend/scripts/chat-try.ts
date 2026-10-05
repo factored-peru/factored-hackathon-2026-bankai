@@ -28,7 +28,8 @@ export type ChatTurn = Readonly<{
 
 export type ChatClient = Readonly<{
 	send(text: string): Promise<ChatTurn>;
-	close(): void;
+	/** Closes the socket and waits until the server has released the connection. */
+	close(): Promise<void>;
 }>;
 
 export type OpenChatOptions = Readonly<{
@@ -115,6 +116,10 @@ export async function openChat(options: OpenChatOptions): Promise<ChatClient> {
 	const inbox: ChatEvent[] = [];
 	let waiter: (() => void) | null = null;
 	let closedReason: string | null = null;
+	let resolveClosed: (() => void) | null = null;
+	const closed = new Promise<void>((resolve) => {
+		resolveClosed = resolve;
+	});
 	socket.addEventListener("message", (message) => {
 		const event = parseEvent(message.data);
 		if (event === null) return;
@@ -125,6 +130,8 @@ export async function openChat(options: OpenChatOptions): Promise<ChatClient> {
 	socket.addEventListener("close", (event) => {
 		closedReason = `chat_socket_closed:${event.code}`;
 		waiter?.();
+		resolveClosed?.();
+		resolveClosed = null;
 	});
 
 	/** Next event matching `accept`, consuming everything before it. */
@@ -241,8 +248,9 @@ export async function openChat(options: OpenChatOptions): Promise<ChatClient> {
 			}
 			return { ...turn, reply, status, reasonCode, problem: null };
 		},
-		close() {
-			socket.close();
+		async close() {
+			if (socket.readyState !== WebSocket.CLOSED) socket.close();
+			await closed;
 		},
 	};
 }
@@ -312,7 +320,7 @@ async function main(): Promise<number> {
 					`${turn.problem === null ? "" : ` problema=${turn.problem}`}\n`,
 			);
 		}
-		chat.close();
+		await chat.close();
 		return ok ? 0 : 1;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "chat_error";
