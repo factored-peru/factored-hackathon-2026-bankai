@@ -83,6 +83,7 @@ bun run check
 | Evaluación de goldens    | `bun run eval:run`                                 | Calcula la matriz determinista e imprime un resumen sin contenido; no envía nada ni toca la red. |
 | Chat de prueba           | `bun run chat:try -- --message "hola"`             | Cliente de consola del WebSocket de un backend ya levantado (local, Docker o desplegado con `--allow-remote`). No inicia nada; el backend al que apunta puede llamar a la nube. |
 | Evaluación con emisión   | `bun run eval:run -- --emit`                       | Además envía un span por fixture a Langfuse Cloud US y cada resultado a BigQuery, según lo configurado. Sale con código 1 si un canal falla o no hay ninguno configurado. Alcanza la nube: requiere autorización explícita y credenciales fuera de Git. |
+| Seed identidad demo      | `bun run seed:firestore-demo-identity`             | Dry-run del plan `user_profiles` + bindings (sin GCP). `--execute` escribe Firestore y exige autorización; ver `docs/firestore-collections.md`. |
 
 ### Probar el chat a mano, en local o en Docker
 

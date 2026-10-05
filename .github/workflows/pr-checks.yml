@@ -6,7 +6,9 @@ on:
       - "app/backend/**"
       - "data-ingestion-and-processing/**"
       - "deploy/terraform/**"
+      - "firestore.indexes.json"
       - ".github/workflows/pr-checks.yml"
+      - ".github/workflows/seed-firestore-demo-identity.yml"
 
 concurrency:
   group: pr-checks-${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -40,6 +42,8 @@ jobs:
           SESSION_STORE_ENABLED: "false"
           LLM_CACHE_ENABLED: "false"
         run: bun test
+      - name: Seed Firestore demo identity (dry-run)
+        run: bun run seed:firestore-demo-identity -- --dry-run --fixture
 
   pipeline:
     name: pipeline
