@@ -26,7 +26,14 @@ from bankai_pipeline.c5 import load_config as load_c5_config
 from bankai_pipeline.c5 import run as run_c5
 from bankai_pipeline.dispute_contracts import CONTRACTS
 from bankai_pipeline.graph import compile_graph, graph_dry_run_plan
+from bankai_pipeline.graph_diff import (
+    DiffGateConfig,
+    assert_diff_gate_passed,
+    dry_run_plan as graph_diff_dry_run_plan,
+    run_graph_diff,
+)
 from bankai_pipeline.gcs_publication import gcs_publication_dry_run, publish_gcs_graph
+from bankai_pipeline.ingestion_cloud import load_dry_run_plan, transfer_dry_run_plan
 from bankai_pipeline.kg_publication import local_publication_dry_run, prepare_publication, publish_local_graph
 from bankai_pipeline.pipeline_lease import DEFAULT_LEASE_TTL_SECONDS, FirestorePipelineLease
 from bankai_pipeline.kdd import dry_run_plan, load_config, run_kdd
@@ -48,6 +55,7 @@ STAGES = (
     "train-satisfaction-ordinal",
     "evaluate-supervised-suite",
     "compile-graph",
+    "graph-diff",
     "publish",
     "report-metrics",
 )
@@ -132,6 +140,36 @@ def main() -> None:
         default=Path("artifacts/reports"),
         help="Local interpretability report root for --stage report-metrics.",
     )
+    parser.add_argument(
+        "--previous-kdd-artifact-dir",
+        type=Path,
+        help="Previous KDD run directory for --stage graph-diff.",
+    )
+    parser.add_argument(
+        "--candidate-kdd-artifact-dir",
+        type=Path,
+        help="Candidate KDD run directory for --stage graph-diff.",
+    )
+    parser.add_argument(
+        "--diff-output",
+        type=Path,
+        help="Path or directory for graph-diff JSON report.",
+    )
+    parser.add_argument(
+        "--diff-report",
+        type=Path,
+        help="Existing graph-diff report required when --require-diff-pass is set.",
+    )
+    parser.add_argument(
+        "--require-diff-pass",
+        action="store_true",
+        help="Fail closed on publish unless --diff-report gate.passed is true.",
+    )
+    parser.add_argument("--min-jaccard", type=float, default=0.5)
+    parser.add_argument("--max-removed-ratio", type=float, default=0.5)
+    parser.add_argument("--max-added-ratio", type=float, default=0.5)
+    parser.add_argument("--max-row-count-delta-ratio", type=float, default=0.25)
+    parser.add_argument("--min-holdout-stable-fraction", type=float, default=0.5)
     args = parser.parse_args()
 
     if args.stage == "prepare":
@@ -147,6 +185,24 @@ def main() -> None:
                 sort_keys=True,
             )
         )
+        return
+
+    if args.stage == "transfer":
+        if not args.dry_run:
+            parser.error(
+                "transfer requires Storage Transfer Service and the reconciler; "
+                "use --dry-run until P0-37 cloud resources are authorized"
+            )
+        print(json.dumps(transfer_dry_run_plan(), ensure_ascii=False, sort_keys=True))
+        return
+
+    if args.stage == "load":
+        if not args.dry_run:
+            parser.error(
+                "load requires Eventarc/Cloud Tasks/ingestion-worker; "
+                "use --dry-run until P0-37 cloud resources are authorized"
+            )
+        print(json.dumps(load_dry_run_plan(), ensure_ascii=False, sort_keys=True))
         return
 
     if args.stage == "kdd":
@@ -200,7 +256,47 @@ def main() -> None:
         print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
         return
 
+    if args.stage == "graph-diff":
+        if args.previous_kdd_artifact_dir is None or args.candidate_kdd_artifact_dir is None:
+            parser.error(
+                "--previous-kdd-artifact-dir and --candidate-kdd-artifact-dir "
+                "are required for --stage graph-diff"
+            )
+        gate = DiffGateConfig(
+            min_jaccard=args.min_jaccard,
+            max_removed_ratio=args.max_removed_ratio,
+            max_added_ratio=args.max_added_ratio,
+            max_row_count_delta_ratio=args.max_row_count_delta_ratio,
+            min_holdout_stable_fraction=args.min_holdout_stable_fraction,
+        )
+        if args.dry_run:
+            print(
+                json.dumps(
+                    graph_diff_dry_run_plan(
+                        args.previous_kdd_artifact_dir,
+                        args.candidate_kdd_artifact_dir,
+                        args.diff_output,
+                        gate,
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return
+        report = run_graph_diff(
+            args.previous_kdd_artifact_dir,
+            args.candidate_kdd_artifact_dir,
+            gate=gate,
+            output=args.diff_output,
+        )
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+        return
+
     if args.stage == "publish":
+        if args.require_diff_pass:
+            if args.diff_report is None:
+                parser.error("--diff-report is required with --require-diff-pass")
+            assert_diff_gate_passed(args.diff_report)
         if args.graph_artifact_dir is None:
             parser.error("--graph-artifact-dir is required for --stage publish")
         if args.publish_backend == "local":

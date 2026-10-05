@@ -11,7 +11,8 @@ endpoints ni participa en peticiones de usuario. La decisión normativa de stack
 3. [`docs/kdd-dispute-transaction-support.md`](docs/kdd-dispute-transaction-support.md) — KDD, papers y run endurecido.
 4. [`docs/futour-knowledge-graph-lessons.md`](docs/futour-knowledge-graph-lessons.md) — Apriori / FP-Growth / MultiLevel / FuTour.
 5. [`docs/kg-rag-validation-20261004.md`](docs/kg-rag-validation-20261004.md) — artefacto KG local multi-algoritmo.
-6. [`docs/prioritized-dispute-case-catalog.md`](docs/prioritized-dispute-case-catalog.md) — C1–C8 y bloqueos.
+6. [`docs/kg-refresh-mlops.md`](docs/kg-refresh-mlops.md) — refresh batch, graph-diff y promote/rollback.
+7. [`docs/prioritized-dispute-case-catalog.md`](docs/prioritized-dispute-case-catalog.md) — C1–C8 y bloqueos.
 
 ## Responsabilidades
 
@@ -46,6 +47,24 @@ source .venv/bin/activate
 python -m pip install -e .
 bankai-pipeline --stage all --run-id local-dry-run --dry-run
 ```
+
+Imagen Cloud Run Job: `Dockerfile` en esta carpeta. Build local:
+
+```bash
+docker build -t bankai-pipeline:local .
+# o
+bash scripts/publish-image.sh --build-local
+```
+
+Publicar digest a Artifact Registry:
+
+```bash
+export GCP_PROJECT_ID=… GCP_REGION=us-central1
+bash scripts/publish-image.sh --push
+```
+
+Push y `terraform apply` requieren autorización. Preflight:
+`../deploy/scripts/gcp-kg-ready.sh --check`. CI: `.github/workflows/publish-images.yml`.
 
 El [módulo `venv` de Python](https://docs.python.org/3/library/venv.html)
 documenta este aislamiento. Las etapas implementadas son `kdd`, C1
@@ -202,6 +221,24 @@ bankai-pipeline --stage report-metrics --run-id metrics-local-20261004 \
 
 Sin `--dry-run` escribe `interpretability-report.json` y `.md` bajo
 `artifacts/reports/<run-id>/`.
+
+## Diff y gate de promote
+
+`graph-diff` compara KDD previous vs candidate (Jaccard de reglas consenso,
+altas/bajas, deltas de métricas, `row_count` vía
+`population-support-snapshot.json`, holdout si existe `validation/`) y escribe
+un reporte con gate configurable. Runbook:
+[`docs/kg-refresh-mlops.md`](docs/kg-refresh-mlops.md).
+
+```bash
+bankai-pipeline --stage graph-diff --run-id diff-local-20261004 \
+  --previous-kdd-artifact-dir artifacts/kdd/PREV_RUN \
+  --candidate-kdd-artifact-dir artifacts/kdd/CAND_RUN \
+  --diff-output artifacts/diff/diff-local-20261004/graph-diff.json
+```
+
+`publish --require-diff-pass --diff-report <path>` falla cerrado sin tocar
+`current.json` si `gate.passed` no es true.
 
 El cierre automatizado descrito en ADR 0020 invocará el job desde GCP, no desde
 una estación local. Como referencia de operación controlada, un job ya creado

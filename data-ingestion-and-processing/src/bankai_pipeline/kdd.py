@@ -230,6 +230,7 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
     results: dict[str, object] = {}
     lineage: list[dict[str, object]] = []
     validation_artifacts: dict[str, object] = {}
+    support_populations: dict[str, dict[str, object]] = {}
     for definition in population_definitions():
         _progress(f"population={definition.name} assert_contract")
         _assert_contract(client, config, definition)
@@ -268,6 +269,12 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
         matrix, feature_catalog = build_item_matrix(train_frame, definition, config)
         del train_frame
         gc.collect()
+        from bankai_pipeline.graph_diff import item_support_from_matrix
+
+        support_populations[definition.name] = {
+            "row_count": int(len(matrix)),
+            "item_support": item_support_from_matrix(matrix),
+        }
         _progress(
             f"population={definition.name} matrix_shape={matrix.shape} "
             f"mine algorithms={list(config.algorithms)}"
@@ -334,6 +341,17 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
     write_artifacts(output_dir, manifest, results)
     if validation_artifacts:
         write_validation_artifacts(output_dir, validation_artifacts)
+    from bankai_pipeline.graph_diff import SUPPORT_SNAPSHOT_FILENAME, build_support_snapshot
+
+    snapshot = build_support_snapshot(
+        run_id=run_id,
+        window={
+            "start_timestamp": config.start_timestamp,
+            "end_timestamp": config.end_timestamp,
+        },
+        populations=support_populations,
+    )
+    _write_json(output_dir / SUPPORT_SNAPSHOT_FILENAME, snapshot)
     _progress(f"run_id={run_id} artifacts_written")
     return manifest
 

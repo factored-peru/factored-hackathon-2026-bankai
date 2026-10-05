@@ -253,6 +253,138 @@ describe("LocalKnowledgeGraphArtifactRepository", () => {
 		}
 	});
 
+	test("purges stale catalog snapshots when current.run_id changes", async () => {
+		const root = await fixture();
+		try {
+			const repository = new LocalKnowledgeGraphArtifactRepository(
+				root,
+				"demo-bankai",
+			);
+			const first = await repository.load({ session, traceId: "trace-1" });
+			expect(first.status).toBe("ready");
+			expect(repository.cachedCatalogVersions()).toEqual(["kg-v1-fixture"]);
+
+			const secondRun = "graph-fixture-2026-b";
+			const firstDir = join(root, "demo-bankai", "graph-fixture-2026");
+			const secondDir = join(root, "demo-bankai", secondRun);
+			await mkdir(secondDir, { recursive: true });
+			for (const name of [
+				"graph-v1.msgpack",
+				"graph-manifest.json",
+				"kg-operation-catalog.json",
+			]) {
+				await writeFile(
+					join(secondDir, name),
+					await readFile(join(firstDir, name)),
+				);
+			}
+			const catalog = JSON.parse(
+				(await readFile(join(secondDir, "kg-operation-catalog.json"))).toString(
+					"utf8",
+				),
+			) as { version: string };
+			catalog.version = "kg-v1-fixture-b";
+			const catalogBytes = Buffer.from(JSON.stringify(catalog));
+			await writeFile(
+				join(secondDir, "kg-operation-catalog.json"),
+				catalogBytes,
+			);
+			const manifest = JSON.parse(
+				(await readFile(join(secondDir, "graph-manifest.json"))).toString(
+					"utf8",
+				),
+			) as { run_id: string; graph_sha256: string };
+			manifest.run_id = secondRun;
+			const manifestBytes = Buffer.from(JSON.stringify(manifest));
+			await writeFile(join(secondDir, "graph-manifest.json"), manifestBytes);
+			const graphBytes = await readFile(join(secondDir, "graph-v1.msgpack"));
+			const current = {
+				schema_version: "bankai-local-kg-publication-v1",
+				tenant_id: "demo-bankai",
+				run_id: secondRun,
+				catalog_version: "kg-v1-fixture-b",
+				artifact_dir: secondRun,
+				files: {
+					"graph-v1.msgpack": sha(graphBytes),
+					"graph-manifest.json": sha(manifestBytes),
+					"kg-operation-catalog.json": sha(catalogBytes),
+				},
+				provenance: {
+					kdd_run_id: "kdd-fixture-2026",
+					case_catalog_version: "bankai-dispute-kg-cases-v1",
+				},
+			};
+			await writeFile(
+				join(root, "demo-bankai", "current.json"),
+				JSON.stringify(current),
+			);
+
+			const second = await repository.load({ session, traceId: "trace-2" });
+			expect(second.status).toBe("ready");
+			expect(repository.cachedCatalogVersions()).toEqual([
+				"kg-v1-fixture",
+				"kg-v1-fixture-b",
+			]);
+
+			const thirdRun = "graph-fixture-2026-c";
+			const thirdDir = join(root, "demo-bankai", thirdRun);
+			await mkdir(thirdDir, { recursive: true });
+			for (const name of [
+				"graph-v1.msgpack",
+				"graph-manifest.json",
+				"kg-operation-catalog.json",
+			]) {
+				await writeFile(
+					join(thirdDir, name),
+					await readFile(join(secondDir, name)),
+				);
+			}
+			const catalogC = JSON.parse(
+				(await readFile(join(thirdDir, "kg-operation-catalog.json"))).toString(
+					"utf8",
+				),
+			) as { version: string };
+			catalogC.version = "kg-v1-fixture-c";
+			const catalogCBytes = Buffer.from(JSON.stringify(catalogC));
+			await writeFile(
+				join(thirdDir, "kg-operation-catalog.json"),
+				catalogCBytes,
+			);
+			const manifestC = JSON.parse(
+				(await readFile(join(thirdDir, "graph-manifest.json"))).toString(
+					"utf8",
+				),
+			) as { run_id: string };
+			manifestC.run_id = thirdRun;
+			const manifestCBytes = Buffer.from(JSON.stringify(manifestC));
+			await writeFile(join(thirdDir, "graph-manifest.json"), manifestCBytes);
+			const graphCBytes = await readFile(join(thirdDir, "graph-v1.msgpack"));
+			await writeFile(
+				join(root, "demo-bankai", "current.json"),
+				JSON.stringify({
+					...current,
+					run_id: thirdRun,
+					catalog_version: "kg-v1-fixture-c",
+					artifact_dir: thirdRun,
+					files: {
+						"graph-v1.msgpack": sha(graphCBytes),
+						"graph-manifest.json": sha(manifestCBytes),
+						"kg-operation-catalog.json": sha(catalogCBytes),
+					},
+				}),
+			);
+			const third = await repository.load({ session, traceId: "trace-3" });
+			expect(third.status).toBe("ready");
+			// Keep current + previous only; oldest snapshot purged.
+			expect(repository.cachedCatalogVersions()).toEqual([
+				"kg-v1-fixture-b",
+				"kg-v1-fixture-c",
+			]);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
 	test("fails closed for corrupt artifacts and a foreign tenant", async () => {
 		const root = await fixture(true);
 		try {

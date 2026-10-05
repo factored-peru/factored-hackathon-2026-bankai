@@ -28,3 +28,34 @@ Valkey no conserva evidencia, casos, aprobaciones, auditoría, checkpoints ni
 leases del pipeline. BigQuery conserva la traza analítica de ingesta; Firestore
 conserva su coordinación durable. PostgreSQL y Redis no son componentes
 soportados del despliegue objetivo.
+
+Identidad durable de aplicación: `customer_identity_bindings` (user →
+`customer_id`) y `user_profiles` (roles/capabilities). Las sesiones siguen
+siendo sólo Valkey; el backend puede mantener un LRU de proceso delante de
+`SessionStore.get` / resolvers, sin sustituir el almacén compartido.
+
+### Namespaces Memorystore (mismo cluster por defecto)
+
+Prefijo configurable `KV_KEY_PREFIX` (default `agent:`):
+
+| Namespace | Uso | TTL |
+| --- | --- | --- |
+| `{prefix}session:…` | Sesión opaca | `SESSION_TTL_SECONDS` |
+| `{prefix}handle:…` | Handles AES-GCM de datos privados | `HANDLE_TTL_SECONDS` |
+| `{prefix}llm:resp:v1:…` | Exact-match de respuesta LLM saneada | `LLM_CACHE_TTL_SECONDS` |
+| `{prefix}idem:…` / `{prefix}lock:…` | Coordinación futura | corto |
+
+El cache LLM (`LLM_CACHE_ENABLED`) reutiliza el mismo Memorystore. La clave
+incluye `tenantId` + `userId` (hash), `modelId`, `operation`, `promptHash`,
+`graphRunId` y `catalogVersion` para invalidar al publicar grafo/catálogo nuevo
+sin `FLUSHDB`. Valores: JSON `{ text, model, usage?, createdAt }` — nunca
+system prompt crudo, user raw, filas BigQuery, msgpack del grafo, evidencia
+intermedia ni checkpoints LangGraph (siguen en Firestore).
+
+Anti-patrones: cache semántico por embeddings en Valkey; sustituir el LRU de
+proceso de sesión/identidad por este cache; segundo cluster Memorystore salvo
+presión de memoria o SLA/trust distinto (`*-llm-cache` con `allkeys-lru`).
+
+Capa distinta del **provider prompt cache** (Vertex/Gemini): el adaptador ordena
+prefijo estable (`systemInstruction` + tools + marcador catalog/graph) antes de
+la cola variable del usuario para aprovechar caching implícito del proveedor.

@@ -104,7 +104,9 @@ Cloud Scheduler (15 min; lookback 30 min)
 - `publish` valida schema, manifest y checksum, publica el paquete inmutable
   `graph-v1.msgpack` + `graph-manifest.json` + `kg-operation-catalog.json` y
   actualiza `current.json` sólo después de una publicación completa y
-  verificable. El adaptador local (`--publish-backend local --local-target`)
+  verificable. Con `--require-diff-pass` exige un reporte `graph-diff` con
+  `gate.passed=true` antes de escribir; si el gate falla, aborta sin tocar
+  `current.json`. El adaptador local (`--publish-backend local --local-target`)
   emula el contrato para `demo-bankai`. El adaptador GCS
   (`--publish-backend gcs --gcs-bucket`) sube el mismo contrato a
   `{tenant}/{run_id}/*` y exige un lease Firestore
@@ -112,6 +114,10 @@ Cloud Scheduler (15 min; lookback 30 min)
   escribe local ni cloud. La ejecución cloud real sigue requiriendo
   autorización explícita, credenciales ADC y el bucket/IAM desplegados; no se
   asume `terraform apply`.
+- `graph-diff` compara KDD previous vs candidate (Jaccard de reglas consenso,
+  altas/bajas, deltas de métricas, delta `row_count` vía
+  `population-support-snapshot.json`, holdout si existe `validation/`) y emite
+  un reporte con gate configurable. No publica ni consulta BigQuery.
 - `kdd` mina sobre la población completa de la ventana (sin subsample cuando
   `max_rows` cubre la población) y, con `[kdd.validation]` habilitado (default),
   parte temporalmente train/holdout, mina en train y recalcula
@@ -130,6 +136,30 @@ reportes y artefactos no incluyen PII cruda; contienen IDs saneados, lineage,
 conteos, versiones y resultados de calidad. Las cuentas de servicio tienen
 permisos mínimos y separados para Scheduler, Eventarc, Cloud Tasks, funciones,
 Storage Transfer Service, GCS, BigQuery, Firestore y Cloud Run Job.
+
+### Refresh MLOps (batch, no incremental por fila)
+
+Para association rules / KG analítico Bankai, la práctica correcta no es
+actualizar el grafo por cada fila nueva. Un registro nuevo cambia soportes
+globales; la minería incremental fiable es cara y frágil. El patrón normativo
+es model registry + batch:
+
+1. Ingesta incremental a BigQuery (objeto/archivo verified → raw).
+2. Reentrenamiento batch del KDD sobre la ventana completa del job.
+3. Artefacto inmutable versionado (`{tenant}/{run_id}/*`) + pointer `current.json`.
+4. Diff/gate vs versión anterior (`graph-diff`) antes de promover.
+5. Runtime lee sólo `current`; al cambiar `run_id` invalida snapshots cacheados.
+
+Anti-patrones explícitos: minería online en petición HTTP; update del grafo por
+TID; tratar C1–C5 como seed rules de minería (son ontología fija); promover sin
+gate cuando `--require-diff-pass` está activo. El snapshot
+`population-support-snapshot.json` sirve sólo para diff (item support +
+`row_count` + ventana), no como fuente de verdad online. El consenso
+Apriori ∩ FP-Growth ∩ Eclat sigue siendo el único ingreso al grafo. Operadores
+usan CLI `graph-diff` + `publish`; el backoffice consume el contrato admin
+`/v1/admin/kg/*` (current / versions / diff / promote / rollback) sin scaffold
+frontend en este ADR. Runbook operativo:
+`../../data-ingestion-and-processing/docs/kg-refresh-mlops.md`.
 
 ## Consequences
 
@@ -151,3 +181,4 @@ no se asumen desplegados.
 - https://docs.cloud.google.com/tasks/docs/dual-overview
 - https://docs.cloud.google.com/bigquery/docs/loading-data-cloud-storage-csv
 - `../../data-ingestion-and-processing/README.md`
+- `../../data-ingestion-and-processing/docs/kg-refresh-mlops.md`

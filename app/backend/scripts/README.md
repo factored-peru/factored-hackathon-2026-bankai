@@ -4,6 +4,10 @@ Automatizacion local para mantener el contrato como fuente de verdad.
 
 - `bun run spec:check`: valida reglas SDD sobre `specs/openapi.json`.
 - `validate-openapi.ts`: implementacion del validador de contrato.
+- `publish-image.sh`: construye la imagen Docker del backend; `--build-local`
+  (default) o `--push` a Artifact Registry (imprime digest). Requiere
+  `GCP_PROJECT_ID` / `GCP_REGION` para push. Ver
+  [`deploy/docs/image-digests.md`](../../../deploy/docs/image-digests.md).
 - `bun run env:prune-empty`: elimina de `app/backend/.env` sólo las
   asignaciones sin ningún carácter tras `=` y las asignaciones no vacías que
   una ocurrencia posterior de la misma variable sustituye; muestra sólo nombres

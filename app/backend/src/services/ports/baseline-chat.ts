@@ -35,6 +35,8 @@ export interface BaselineChatModel {
 		system: string;
 		user: string;
 		tool: BaselineToolDefinition;
+		/** Versioned, non-PII prefix placed before the user turn for provider cache. */
+		stablePrefix?: string;
 	}): Promise<BaselineModelTurn>;
 	continue(input: {
 		system: string;
@@ -42,6 +44,7 @@ export interface BaselineChatModel {
 		tool: BaselineToolDefinition;
 		call: BaselineToolCall;
 		result: BaselineToolResult;
+		stablePrefix?: string;
 	}): Promise<BaselineModelTurn>;
 }
 

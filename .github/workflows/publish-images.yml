@@ -1,0 +1,132 @@
+name: Publish images
+
+# Builds and pushes digest-pinned images to Artifact Registry, then updates
+# Cloud Run service/job IMAGE ONLY. Does NOT terraform apply.
+# Never --clear-env-vars / --set-env-vars: Terraform owns GCS_UPLOAD_*,
+# FIRESTORE_*, KV_*, GCS_GRAPH_BUCKET and the Serverless VPC connector.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/backend/**"
+      - "data-ingestion-and-processing/**"
+      - ".github/workflows/publish-images.yml"
+  workflow_dispatch:
+    inputs:
+      update_cloud_run:
+        description: "Update Cloud Run service/job to new digests"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+  ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY || 'bankai' }}
+  NAME_PREFIX: ${{ vars.NAME_PREFIX || 'bankai' }}
+
+jobs:
+  publish:
+    name: build-push-update
+    runs-on: ubuntu-latest
+    if: ${{ vars.GCP_PROJECT_ID != '' && vars.WIF_PROVIDER != '' && vars.WIF_SERVICE_ACCOUNT != '' }}
+    outputs:
+      backend_digest: ${{ steps.backend.outputs.digest }}
+      pipeline_digest: ${{ steps.pipeline.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Publish backend image
+        id: backend
+        working-directory: app/backend
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          DIGEST="$(bash scripts/publish-image.sh --push --git-sha "$GIT_SHA")"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Backend digest: $DIGEST"
+
+      - name: Publish pipeline image
+        id: pipeline
+        working-directory: data-ingestion-and-processing
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          DIGEST="$(bash scripts/publish-image.sh --push --git-sha "$GIT_SHA")"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pipeline digest: $DIGEST"
+
+      - name: Write digest artifact
+        run: |
+          mkdir -p digests
+          {
+            echo "git_sha=${{ github.sha }}"
+            echo "backend_image=${{ steps.backend.outputs.digest }}"
+            echo "pipeline_image=${{ steps.pipeline.outputs.digest }}"
+          } > digests/image-digests.txt
+          cat digests/image-digests.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-digests-${{ github.sha }}
+          path: digests/image-digests.txt
+
+      - name: Update Cloud Run backend service image
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_cloud_run }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          # Image only — do not pass --clear-env-vars or --set-env-vars.
+          SERVICE="${NAME_PREFIX}-backend"
+          if gcloud run services describe "$SERVICE" --region="$GCP_REGION" --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
+            gcloud run services update "$SERVICE" \
+              --region="$GCP_REGION" \
+              --project="$GCP_PROJECT_ID" \
+              --image="${{ steps.backend.outputs.digest }}" \
+              --update-labels="git-sha=${GITHUB_SHA:0:12}"
+          else
+            echo "Cloud Run service $SERVICE not found; skip update (apply Terraform first)"
+          fi
+
+      - name: Update Cloud Run pipeline job image
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_cloud_run }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          # Image only — do not pass --clear-env-vars or --set-env-vars.
+          JOB="${NAME_PREFIX}-pipeline"
+          if gcloud run jobs describe "$JOB" --region="$GCP_REGION" --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
+            gcloud run jobs update "$JOB" \
+              --region="$GCP_REGION" \
+              --project="$GCP_PROJECT_ID" \
+              --image="${{ steps.pipeline.outputs.digest }}"
+          else
+            echo "Cloud Run job $JOB not found; skip update (apply Terraform first)"
+          fi
+
+  skipped:
+    name: skip-when-wif-unset
+    runs-on: ubuntu-latest
+    if: ${{ vars.GCP_PROJECT_ID == '' || vars.WIF_PROVIDER == '' || vars.WIF_SERVICE_ACCOUNT == '' }}
+    steps:
+      - run: |
+          echo "Skipping publish: set repository variables GCP_PROJECT_ID, GCP_REGION, WIF_PROVIDER, WIF_SERVICE_ACCOUNT"
+          echo "See deploy/docs/github-wif.md"

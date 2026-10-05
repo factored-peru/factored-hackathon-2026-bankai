@@ -30,6 +30,9 @@ export const envSchema = z.object({
 	KV_KEY_PREFIX: z.string().default("agent:"),
 	SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
 	HANDLE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+	/** Exact-match LLM response cache on the same Memorystore instance (namespace llm:). */
+	LLM_CACHE_ENABLED: envBoolean.default(false),
+	LLM_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(600),
 	PRIVATE_DATA_ENCRYPTION_KEY: z.string().default(""),
 	CSRF_SECRET: z.string().default(""),
 	AUTH_ISSUER_URL: z.string().default(""),
@@ -392,6 +395,12 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 	if (settings.SESSION_STORE_ENABLED && settings.KV_URL.length === 0) {
 		throw new Error(
 			"SVC-CORE-9003: KV_URL is required when SESSION_STORE_ENABLED is true",
+		);
+	}
+
+	if (settings.LLM_CACHE_ENABLED && settings.KV_URL.length === 0) {
+		throw new Error(
+			"SVC-CORE-9017: KV_URL is required when LLM_CACHE_ENABLED is true",
 		);
 	}
 
