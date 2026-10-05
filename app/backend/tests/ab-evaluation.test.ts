@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parsePipelineRunRecord } from "../src/services/evaluation/ab-contracts.js";
 import {
 	evaluateTechnicalCompleteness,
 	runAbComparison,
 } from "../src/services/evaluation/ab-comparison.js";
-import { parsePipelineRunRecord } from "../src/services/evaluation/ab-contracts.js";
 import { BaselineComparableRunner } from "../src/services/evaluation/baseline-comparable-runner.js";
 import { ControlledComparableRunner } from "../src/services/evaluation/controlled-comparable-runner.js";
 import { SyntheticTaskCompletionJudge } from "../src/services/evaluation/task-completion-judge.js";
@@ -61,7 +61,9 @@ describe("local A/B evaluation", () => {
 	});
 
 	test("pairs baseline and controlled on the same snapshot with ungated vs gated shape", async () => {
-		const scenario = selectAbScenarios("phase-1")[0]!;
+		const scenario = selectAbScenarios("phase-1")[0];
+		expect(scenario).toBeDefined();
+		if (!scenario) throw new Error("missing phase-1 scenario");
 		const baseline = await new BaselineComparableRunner().run(scenario);
 		const controlled = await new ControlledComparableRunner().run(scenario);
 		expect(baseline.snapshotId).toBe(controlled.snapshotId);
@@ -104,8 +106,11 @@ describe("local A/B evaluation", () => {
 			for (const scenario of selectAbScenarios("phase-1")) {
 				const controlled = runs.find(
 					(r) =>
-						r.scenarioId === scenario.scenarioId && r.pipeline === "controlled",
-				)!;
+						r.scenarioId === scenario.scenarioId &&
+						r.pipeline === "controlled",
+				);
+				expect(controlled).toBeDefined();
+				if (!controlled) continue;
 				const technical = evaluateTechnicalCompleteness(scenario, controlled);
 				expect(technical.every((m) => m.passed)).toBe(true);
 			}
