@@ -138,7 +138,7 @@ def population_definitions() -> tuple[PopulationDefinition, ...]:
             boolean_columns=("sla_breached", "is_repeat_complainer"),
             numeric_columns=("claimed_amount", "resolution_days"),
             contract=COMPLAINTS,
-            row_filter_sql="`category` = 'Transactions'",
+            row_filter_sql="UPPER(`category`) = 'TRANSACTIONS'",
             target_leakage_booleans=("sla_breached",),
             target_leakage_numerics=("resolution_days",),
             hierarchical_pairs=(("category", "subcategory"),),
@@ -346,8 +346,16 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
     snapshot = build_support_snapshot(
         run_id=run_id,
         window={
-            "start_timestamp": config.start_timestamp,
-            "end_timestamp": config.end_timestamp,
+            "start_timestamp": (
+                config.start_timestamp.isoformat()
+                if hasattr(config.start_timestamp, "isoformat")
+                else str(config.start_timestamp)
+            ),
+            "end_timestamp": (
+                config.end_timestamp.isoformat()
+                if hasattr(config.end_timestamp, "isoformat")
+                else str(config.end_timestamp)
+            ),
         },
         populations=support_populations,
     )
@@ -1145,10 +1153,23 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=path.parent, delete=False
     ) as temporary:
-        json.dump(payload, temporary, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(
+            payload,
+            temporary,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            default=_json_default,
+        )
         temporary.write("\n")
         temporary_path = Path(temporary.name)
     temporary_path.replace(path)
+
+
+def _json_default(value: object) -> object:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()  # type: ignore[no-any-return]
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _progress(message: str) -> None:

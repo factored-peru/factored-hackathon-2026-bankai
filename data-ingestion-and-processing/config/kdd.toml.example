@@ -1,12 +1,13 @@
 [kdd]
 # Identifiers only; credentials are discovered through Application Default Credentials.
 project = "factored-hackathon"
-dataset = "hackathon"
+dataset = "cur"
 # Aligns with Phase 1 dispute baseline snapshot (America/Lima period bounds in UTC).
 start_timestamp = "2023-06-17T00:00:00+00:00"
 end_timestamp = "2026-06-19T00:00:00+00:00"
 output_dir = "artifacts/kdd"
-# Full-window scans: ~4.4M transactions and ~13.5k Transactions complaints.
+# Full-window scans over curated `cur` (~4.4M transactions; ~13.5k TRANSACTIONS complaints).
+# Category filters are case-insensitive (cur stores UPPER from prepare imputation).
 maximum_bytes_billed = 50000000000
 max_rows = 5000000
 # Graph consensus uses Apriori ∩ FP-Growth ∩ Eclat. apriori_hybrid must match Apriori.

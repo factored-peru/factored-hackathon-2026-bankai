@@ -287,7 +287,7 @@ def _read_split(client: BigQueryC1Client, config: C1Config, split: C1Split) -> t
     counts_query = f"""
 SELECT `{TARGET}` AS label, COUNT(*) AS row_count
 FROM `{_table_ref(config)}`
-WHERE `category` = @category
+WHERE UPPER(`category`) = UPPER(@category)
   AND `creation_date` >= @start_timestamp
   AND `creation_date` < @end_timestamp
   AND `{TARGET}` IS NOT NULL
@@ -310,7 +310,7 @@ WITH eligible AS (
       ORDER BY FARM_FINGERPRINT(CAST(`complaint_id` AS STRING))
     ) AS sample_rank
   FROM `{_table_ref(config)}`
-  WHERE `category` = @category
+  WHERE UPPER(`category`) = UPPER(@category)
     AND `creation_date` >= @start_timestamp
     AND `creation_date` < @end_timestamp
     AND `{TARGET}` IS NOT NULL

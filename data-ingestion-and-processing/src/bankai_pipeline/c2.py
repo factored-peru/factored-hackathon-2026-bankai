@@ -200,7 +200,7 @@ def _read_split(client: BigQueryC2Client, config: C2Config, split: C2Split) -> t
 WITH sampled AS (
   SELECT {columns}
   FROM `{_table_ref(config)}`
-  WHERE `category` = @category
+  WHERE UPPER(`category`) = UPPER(@category)
     AND `status` IN UNNEST(@terminal_statuses)
     AND `{TARGET}` IS NOT NULL
     AND `creation_date` >= @start_timestamp

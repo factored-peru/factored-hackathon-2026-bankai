@@ -1,7 +1,7 @@
 [c1]
 # El piloto usa únicamente reclamos de categoría Transactions y nunca persiste filas crudas.
 project = "factored-hackathon"
-dataset = "hackathon"
+dataset = "cur"
 output_dir = "artifacts/c1"
 category = "Transactions"
 maximum_bytes_billed = 1000000000

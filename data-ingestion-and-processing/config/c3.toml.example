@@ -1,6 +1,6 @@
 [c3]
 project = "factored-hackathon"
-dataset = "hackathon"
+dataset = "cur"
 output_dir = "artifacts/c3"
 maximum_bytes_billed = 1000000000
 alpha = 1.0
