@@ -40,9 +40,9 @@ backend_environment = {
 
 # Secret Manager secret ids only (never secret values in Git).
 backend_secret_environment = {
-  SERVICE_TOKEN               = "bankai-SERVICE_TOKEN"
-  PRIVATE_DATA_ENCRYPTION_KEY = "bankai-PRIVATE_DATA_ENCRYPTION_KEY"
-  DEMO_ACTOR_HMAC_KEY         = "bankai-DEMO_ACTOR_HMAC_KEY"
+  SERVICE_TOKEN               = { secret = "bankai-SERVICE_TOKEN" }
+  PRIVATE_DATA_ENCRYPTION_KEY = { secret = "bankai-PRIVATE_DATA_ENCRYPTION_KEY" }
+  DEMO_ACTOR_HMAC_KEY         = { secret = "bankai-DEMO_ACTOR_HMAC_KEY" }
 }
 
 # GCS_GRAPH_BUCKET is injected by the runtime module from kg_artifacts.

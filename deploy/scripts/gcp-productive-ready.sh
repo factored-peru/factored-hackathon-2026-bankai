@@ -51,15 +51,15 @@ grep -q 'AGENTIC_CHAT_ENABLED.*=.*"false"' "$EXAMPLE"
 grep -q 'VERTEX_AI_ENABLED.*=.*"true"' "$EXAMPLE"
 grep -q 'BIGQUERY_ENABLED.*=.*"true"' "$EXAMPLE"
 grep -q 'KG_RAG_LOCAL_ENABLED.*=.*"false"' "$EXAMPLE"
-grep -q 'DEMO_ACTOR_HMAC_KEY.*=.*"bankai-DEMO_ACTOR_HMAC_KEY"' "$EXAMPLE"
+grep -q 'DEMO_ACTOR_HMAC_KEY.*secret.*bankai-DEMO_ACTOR_HMAC_KEY' "$EXAMPLE"
 grep -q 'roles/aiplatform.user' "$RUNTIME_MOD/main.tf"
 grep -q 'roles/bigquery.jobUser' "$RUNTIME_MOD/main.tf"
 grep -q '@sha256:' "$EXAMPLE"
 
 echo "-- no secret material committed in example (Secret Manager ids OK)"
 if grep -E '^\s*(SERVICE_TOKEN|PRIVATE_DATA_ENCRYPTION_KEY|DEMO_ACTOR_HMAC_KEY)\s*=' "$EXAMPLE" \
-  | grep -vE '=\s*"bankai-[A-Z0-9_]+"' >/dev/null; then
-  echo "secret env assignments in example must be Secret Manager ids (bankai-…)" >&2
+  | grep -vE '=\s*\{\s*secret\s*=\s*"bankai-[A-Z0-9_]+"\s*\}' >/dev/null; then
+  echo "secret env assignments in example must be Secret Manager references" >&2
   exit 1
 fi
 grep -q 'backend_secret_environment' "$EXAMPLE"

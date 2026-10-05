@@ -35,9 +35,12 @@ variable "backend_environment" {
 }
 
 variable "backend_secret_environment" {
-  type        = map(string)
+  type = map(object({
+    secret  = string
+    version = optional(string, "latest")
+  }))
   default     = {}
-  description = "Env var name → Secret Manager secret id for Cloud Run secret refs."
+  description = "Secret Manager references for backend env: name => { secret, version }."
 }
 
 variable "pipeline_environment" {

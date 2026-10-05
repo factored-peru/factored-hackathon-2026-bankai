@@ -31,9 +31,12 @@ variable "backend_environment" {
 }
 
 variable "backend_secret_environment" {
-  type        = map(string)
+  type = map(object({
+    secret  = string
+    version = optional(string, "latest")
+  }))
   default     = {}
-  description = "Env var name → Secret Manager secret id (mounted as value_source.secret_key_ref)."
+  description = "Secret Manager references injected as env vars; a name cannot also be plain."
 }
 
 variable "pipeline_environment" {

@@ -60,3 +60,7 @@ requieren autorización explícita y credenciales fuera de Git.
 
 Ver [state-bootstrap.md](docs/state-bootstrap.md) y
 [staging-flag-matrix.md](docs/staging-flag-matrix.md).
+
+La telemetría en vivo del baseline se activó primero a mano en staging. Lo que
+existe fuera de Terraform y cómo reconciliarlo (plan, secretos, importación de
+la tabla) está en [live-telemetry-handoff.md](docs/live-telemetry-handoff.md).

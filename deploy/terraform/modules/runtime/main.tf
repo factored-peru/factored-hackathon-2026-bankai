@@ -68,7 +68,7 @@ resource "google_project_iam_member" "pipeline_firestore_user" {
 }
 
 resource "google_secret_manager_secret_iam_member" "backend_secret_accessor" {
-  for_each = var.backend_secret_environment
+  for_each = toset([for ref in values(var.backend_secret_environment) : ref.secret])
 
   project   = var.project_id
   secret_id = each.value
@@ -140,8 +140,8 @@ resource "google_cloud_run_v2_service" "backend" {
           name = env.key
           value_source {
             secret_key_ref {
-              secret  = env.value
-              version = "latest"
+              secret  = env.value.secret
+              version = env.value.version
             }
           }
         }
@@ -163,6 +163,11 @@ resource "google_cloud_run_v2_service" "backend" {
       template[0].containers[0].image,
       template[0].labels,
     ]
+
+    precondition {
+      condition     = length(setintersection(keys(local.backend_env), keys(var.backend_secret_environment))) == 0
+      error_message = "An environment variable cannot be both plain and a Secret Manager reference."
+    }
   }
 }
 

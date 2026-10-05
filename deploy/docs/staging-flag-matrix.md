@@ -39,14 +39,27 @@ tfvars — they are merged from `state`.
 | `GCS_GRAPH_TENANT_ID` | `demo-bankai` |
 | `LLM_CACHE_ENABLED` | `false` until baseline/agentic needs exact-match (requires `KV_URL`) |
 | `LLM_CACHE_TTL_SECONDS` | `600` when enabling LLM cache |
+| `OTEL_ENABLED` / `LANGFUSE_ENABLED` | `false` by default; set **together** (`SVC-CORE-9017`). Only `CHAT_PIPELINE=baseline` emits |
+| `BIGQUERY_EVAL_DATASET` / `BIGQUERY_EVAL_TABLE` | Empty = no row persistence. Needs `BIGQUERY_ENABLED=true`; the dataset must differ from `BIGQUERY_DATASET` (`SVC-CORE-9021`) |
 
-## Secrets (Secret Manager / CI only — never Git)
+## Secrets (Secret Manager only — never Git)
+
+Terraform injects `backend_secret_environment` as references only:
+`NAME => { secret, version }`, with `latest` as the default version. It rejects
+a name duplicated in `backend_environment` and grants the backend account
+access only to each referenced secret. Any manually added service environment
+entry must be declared here before the next apply; see
+[live-telemetry-handoff.md](live-telemetry-handoff.md).
 
 | Secret | Required when |
 | --- | --- |
 | `SERVICE_TOKEN` | `APP_ENV` is staging or prod |
 | `PRIVATE_DATA_ENCRYPTION_KEY` | `SESSION_STORE_ENABLED=true` (32-byte key, base64url) |
-| `DEMO_ACTOR_HMAC_KEY` | `BIGQUERY_ENABLED=true` with demo actors |
+| `DEMO_ACTOR_HMAC_KEY` | `DEMO_AUTH_ENABLED=true` with `BIGQUERY_ENABLED=true` (`SVC-CORE-9009`) |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | `OTEL_ENABLED=true` (Langfuse Cloud US only) |
+| `TELEMETRY_CORRELATOR_KEY` | `OTEL_ENABLED=true` (16+ characters; never a plain env var) |
+
+Hand-added env and secrets are removed by the next apply unless declared.
 
 ## LLM cache notes
 
