@@ -1,11 +1,13 @@
-import { trace } from "@opentelemetry/api";
 import type {
 	EvaluationContext,
 	EvaluationResult,
 	Evaluator,
 } from "./contracts.js";
 
-/** Deterministic baseline; results are safe OTel metadata, never content. */
+/**
+ * Deterministic baseline; results are metadata, never content. Telemetry is
+ * emitted by `EvaluationRunner` through the sanitizer, not from here.
+ */
 export class BaseAgentEvaluator implements Evaluator {
 	readonly name: string = "base_agent";
 	readonly version: string = "v1";
@@ -53,22 +55,6 @@ export class BaseAgentEvaluator implements Evaluator {
 				"unverified_result",
 			),
 		];
-		const span = trace
-			.getTracer("bankai.evaluation")
-			.startSpan("agent.evaluate");
-		span.setAttribute("eval.fixture_id", context.fixtureId);
-		span.setAttribute("eval.route", context.route);
-		span.setAttribute("eval.policy_version", context.policyVersion);
-		span.setAttribute("eval.catalog_version", context.catalogVersion ?? "none");
-		for (const result of results) {
-			span.setAttribute(`eval.${result.metric}.score`, result.score);
-			span.setAttribute(`eval.${result.metric}.label`, result.label);
-			span.setAttribute(
-				`eval.${result.metric}.reason_code`,
-				result.reasonCode ?? "none",
-			);
-		}
-		span.end();
 		return results;
 	}
 

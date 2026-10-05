@@ -4,7 +4,7 @@ Infraestructura y operación del monorepo. **No construye imágenes para cloud**
 cada capa propietaria publica digests; aquí solo se provisiona y se hace pull.
 
 ```text
-local/                  composición local de backend y Valkey
+local/                  composición local de backend y Valkey (+ capas de chat)
 docs/                   flags, digests, WIF, bootstrap de estado
 scripts/                preflight GCP (KG + productive; sin apply)
 terraform/modules/      registry + runtime + state
@@ -35,6 +35,8 @@ Ejecuta los comandos desde `deploy/`.
 | --- | --- | --- |
 | Renderizar Compose | `docker compose -f local/backend-compose.yml config` | Disponible; exige `SERVICE_TOKEN` en el entorno. |
 | Levantar backend y Valkey | `docker compose -f local/backend-compose.yml up --build` | Disponible; crea recursos locales. |
+| Chat de demo en contenedor | `docker compose -f local/backend-compose.yml -f local/chat-compose.yml up --build` | Disponible; perfil `dev` con demo en memoria, sin nube ni credenciales. Prueba con `bun run chat:try -- --url http://localhost:8010` desde `app/backend/`. |
+| Baseline real en contenedor | `docker compose -f local/backend-compose.yml -f local/chat-compose.yml -f local/baseline-live-compose.yml up --build` | **Llama a Vertex AI y BigQuery reales** con tus credenciales ADC (`GOOGLE_ADC_FILE`, de sólo lectura) y puede enviar telemetría a Langfuse y BigQuery. Se factura; texto sintético. Se niega a arrancar si falta una variable requerida. |
 | Preflight KG GCP | `bash scripts/gcp-kg-ready.sh --check` | Valida Dockerfiles/scripts + `terraform validate`; **no build, no apply**. |
 | Build local (opcional) | `bash scripts/gcp-kg-ready.sh --build-local` | Delega a `*/scripts/publish-image.sh --build-local`. |
 | Preflight productive | `bash scripts/gcp-productive-ready.sh --check` | Valida registry/state/runtime + GHA + matriz; **no apply**. |

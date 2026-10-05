@@ -26,6 +26,13 @@ decisión de negocio.
   (`SVC-CORE-9006`). `STRUCTURED_CATALOG_PATH` apunta al JSON real (por defecto
   `config/structured-catalog.json`, relativo al backend) y
   `BIGQUERY_JOB_TIMEOUT_MS` acota cada job (máximo 60 000).
+- `BIGQUERY_EVAL_DATASET` y `BIGQUERY_EVAL_TABLE` (por defecto
+  `evaluation_results`) activan la persistencia de resultados de evaluación
+  saneados (ADR 0015); con el dataset vacío no hay persistencia. Exigen
+  `BIGQUERY_ENABLED=true` y nombres de letras, números o `_`
+  (`SVC-CORE-9020`), y el dataset debe ser distinto de `BIGQUERY_DATASET`
+  (`SVC-CORE-9021`): los datos de clientes y los metadatos de evaluación no
+  comparten dataset ni IAM.
 - El selector real reparte dos papeles (ADR 0004): el JEV elige la entrada y
   Vertex AI interpreta sus parámetros. `JEV_ENABLED` exige `JEV_BASE_URL`
   (https), `JEV_API_KEY` y `JEV_MODEL` (`SVC-CORE-9007`); `VERTEX_AI_ENABLED`
@@ -74,10 +81,22 @@ decisión de negocio.
   falla con `SVC-CORE-9006`. El endpoint es regional y debe coincidir con la
   ubicación del template. `MODEL_ARMOR_ENABLED=false` mantiene el guardrail
   fail-closed. `MODEL_ARMOR_DEIDENTIFY_TEMPLATE` y `SDP_*` aún no se usan.
-- `OTEL_*`: telemetría sin contenido privado y métricas de evaluadores TypeScript.
-- `LANGFUSE_*`: dependencia declarada para Langfuse Cloud US como visualizador
-  OTel metadata-only (ADR 0012/0015). `LANGFUSE_ENABLED` permanece `false` y el
-  exportador no envía tráfico hasta P0-33; no se usa Docker self-host en P0.
+- `OTEL_ENABLED`, `LANGFUSE_*` y `TELEMETRY_CORRELATOR_KEY`: telemetría sin
+  contenido privado. Langfuse Cloud US es el único destino (ADR 0012/0015) y
+  recibe los spans por OTLP/HTTP desde el exportador estándar de OpenTelemetry;
+  el SDK `langfuse` no es dependencia. `OTEL_ENABLED` y `LANGFUSE_ENABLED` se
+  activan juntos (`SVC-CORE-9017`) y exigen ambas claves de Langfuse y una
+  `TELEMETRY_CORRELATOR_KEY` de al menos 16 caracteres (`SVC-CORE-9018`); la
+  clave deriva el pseudónimo HMAC que sustituye al `trace_id`. `LANGFUSE_BASE_URL`
+  sólo puede ser `https://us.cloud.langfuse.com` (`SVC-CORE-9019`). No existe
+  una variable de endpoint OTLP: un colector arbitrario no es un destino
+  permitido, y con telemetría activa el arranque rechaza cualquier
+  `OTEL_EXPORTER_OTLP_*` del entorno, porque el exportador las mezclaría en
+  cada petición. Por defecto todo está apagado, no se crea ningún proveedor y no
+  hay red; no se usa Docker self-host en P0. Las claves van por secret manager o
+  `.env` local, nunca en Git. El servidor sólo usa esta telemetría con
+  `CHAT_PIPELINE=baseline`: cada turno emite un span y filas de evaluación (ver
+  ADR 0012); con otro pipeline no se crea nada aunque `OTEL_ENABLED` esté activo.
 
 LangSmith, DeepEval, Promptfoo y DeepAgents no son dependencias ni destinos de
 telemetría P0: `../../docs/planning/evals.md` establece OTel + BigQuery y

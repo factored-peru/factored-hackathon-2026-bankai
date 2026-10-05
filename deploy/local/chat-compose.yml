@@ -1,0 +1,14 @@
+# Local only. Layered on backend-compose.yml to try the conversation chat with
+# the in-memory demo runner: no cloud service and no credentials are involved.
+#
+#   docker compose -f backend-compose.yml -f chat-compose.yml up --build
+#
+# backend-compose.yml fixes APP_ENV=prod, and prod forbids DEMO_AUTH_ENABLED
+# (SVC-CORE-9006), so this file moves the container to the dev profile.
+services:
+  base-bun-typescript-service:
+    environment:
+      APP_ENV: dev
+      DEMO_AUTH_ENABLED: "true"
+      REALTIME_ENABLED: "true"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3001}

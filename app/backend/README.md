@@ -80,6 +80,78 @@ bun run check
 | Contrato                 | `bun run spec:check`                               | Verifica OpenAPI sin modificar fuentes.                    |
 | Calidad                  | `bun test`, `bun run check-types`, `bun run check` | Ejecuta pruebas, tipos y Biome de sólo comprobación.       |
 | Matriz de agente         | `bun run agent:matrix`                             | Ejecuta la simulación declarada para variantes del agente. |
+| Evaluación de goldens    | `bun run eval:run`                                 | Calcula la matriz determinista e imprime un resumen sin contenido; no envía nada ni toca la red. |
+| Chat de prueba           | `bun run chat:try -- --message "hola"`             | Cliente de consola del WebSocket de un backend ya levantado (local, Docker o desplegado con `--allow-remote`). No inicia nada; el backend al que apunta puede llamar a la nube. |
+| Evaluación con emisión   | `bun run eval:run -- --emit`                       | Además envía un span por fixture a Langfuse Cloud US y cada resultado a BigQuery, según lo configurado. Sale con código 1 si un canal falla o no hay ninguno configurado. Alcanza la nube: requiere autorización explícita y credenciales fuera de Git. |
+
+### Probar el chat a mano, en local o en Docker
+
+`bun run chat:try -- --message "hola"` abre una sesión demo y el WebSocket
+`/v1/realtime` de un backend ya levantado, envía los mensajes y muestra los
+estados y la respuesta. Sin `--message` abre un prompt interactivo (`/salir`
+termina). Opciones: `--url` (por defecto `http://localhost:3000`), `--actor`
+(`demo-customer-1`), `--origin` (debe estar en `CORS_ALLOWED_ORIGINS`) y
+`--timeout`. Sale con 1 si un turno termina en problema o `failed`. Una URL que
+no sea de esta máquina exige `--allow-remote`, porque un backend baseline
+reenvía lo que escribes a Vertex AI (ADR 0010: sólo texto sintético).
+
+Para el servicio completo en contenedor (Valkey incluido), desde `deploy/local/`
+y con `SERVICE_TOKEN` en tu entorno:
+
+1. **Sin nube** (chat demo en memoria):
+   `docker compose -f backend-compose.yml -f chat-compose.yml up --build`, y en
+   otra terminal `bun run chat:try -- --url http://localhost:8010`.
+2. **Baseline real con telemetría en vivo**: añade
+   `-f baseline-live-compose.yml` y define en tu shell `VERTEX_AI_PROJECT_ID`,
+   `VERTEX_AI_LOCATION`, `VERTEX_AI_MODEL`, `GOOGLE_CLOUD_PROJECT`,
+   `GOOGLE_CLOUD_LOCATION`, `BIGQUERY_DATASET`, `DEMO_ACTOR_HMAC_KEY` (cualquier
+   valor aleatorio local) y `GOOGLE_ADC_FILE` (tu archivo de Application Default
+   Credentials, que se monta de sólo lectura). La telemetría es opcional:
+   `OTEL_ENABLED` y `LANGFUSE_ENABLED` juntos con sus claves y
+   `TELEMETRY_CORRELATOR_KEY`, y `BIGQUERY_EVAL_DATASET` para las filas. Cada
+   mensaje llama a Vertex AI y se factura. Detén todo con
+   `docker compose -f backend-compose.yml -f chat-compose.yml down -v`.
+
+Con la telemetría activa, cada turno del baseline emite un span `evaluation`
+(`bankai.pipeline=baseline`, latencia, llamadas al modelo, intentos de
+recuperación, código de error) y cuatro filas en BigQuery con
+`evaluator=baseline_chat`, `matrix_version=live-baseline-v1` y
+`fixture_id=live-baseline`. Todos los turnos de una misma conexión WebSocket
+comparten `traceId` y, por tanto, correlador.
+
+Qué buscar en el log del servicio (`docker compose ... logs base-bun-typescript-service`),
+siempre con códigos cerrados y sin contenido:
+
+| `event` | Significado |
+| --- | --- |
+| `live_telemetry_enabled` | Al arrancar: `spans` y `rows` indican qué canales quedaron activos. |
+| `live_telemetry_not_used` | Hay telemetría configurada pero el pipeline no es `baseline`, que es el único que la emite. |
+| `live_telemetry_delivery_failed` | Un turno no pudo entregar su telemetría. `reason`: `sink_not_found`, `sink_permission_denied`, `sink_auth_failed`, `sink_billing_required`, `sink_rejected_rows`, `sink_unavailable`, `export_failed` (Langfuse), `delivery_timeout` (más de 2 s) u `observer_error`. El chat responde igual. |
+
+### Envío real de telemetría y resultados de evaluación
+
+`eval:run -- --emit` es el único comando que lleva resultados de evaluación a
+Langfuse Cloud US (spans OTLP, ADR 0012) y a BigQuery (registros `v1`, ADR
+0015). Con fixtures sintéticos y sin contenido, pero alcanza sistemas externos:
+no lo ejecutes sin una tarea que lo autorice.
+
+1. Crea el dataset y la tabla (`deploy/terraform`, módulo `runtime`: `init
+   -backend=false`, `validate`, `plan`; `apply` requiere autorización).
+2. Define por entorno, nunca en Git: `OTEL_ENABLED=true`,
+   `LANGFUSE_ENABLED=true`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`,
+   `TELEMETRY_CORRELATOR_KEY` (16 o más caracteres), `BIGQUERY_ENABLED=true`,
+   `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `BIGQUERY_DATASET`,
+   `BIGQUERY_EVAL_DATASET` y, si no es el predeterminado, `BIGQUERY_EVAL_TABLE`.
+   No definas ninguna `OTEL_EXPORTER_OTLP_*`: el arranque las rechaza.
+3. Autentica ADC (`gcloud auth application-default login`).
+4. Ejecuta `bun run eval:run -- --emit`. La salida es una línea JSON sin
+   contenido con `emit.spans` y `emit.bigquery`; el código de salida es 0 sólo si
+   todos los canales configurados tuvieron éxito. Si `emit.bigquery` falla, su
+   `reason` indica qué corregir: `sink_not_found` (dataset o tabla inexistentes),
+   `sink_permission_denied` (falta `bigquery.tables.updateData`),
+   `sink_auth_failed` (ADC sin sesión), `sink_billing_required` (los inserts en
+   streaming exigen facturación habilitada), `sink_rejected_rows` (la tabla no
+   coincide con el esquema `v1`) o `sink_unavailable` (otro fallo del servicio).
 
 `bun run format` modifica archivos y sólo se usa cuando una tarea autorice el
 formateo. Bun documenta los [scripts](https://bun.sh/docs/runtime) y las

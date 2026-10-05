@@ -26,6 +26,25 @@ entregar `query` ya desidentificado: el grafo no guarda texto crudo. El
 adaptador actual (`integrations/memory/in-memory-checkpointer.ts`) es volátil y
 por proceso; Valkey lo sustituirá detrás del mismo puerto.
 
+`observability/telemetry-sanitizer.ts` es el único punto por el que un resultado
+de evaluación se convierte en telemetría: construye atributos de span, de
+métrica y registros BigQuery y los valida contra el contrato cerrado de
+`domain/observability` antes de entregarlos a un exportador.
+`observability/trace-correlator.ts` deriva el pseudónimo HMAC que sustituye al
+`trace_id` crudo. `EvaluationRunner` acepta un `EvaluationTelemetry` opcional
+(`ports/evaluation-telemetry.ts`); su fallo nunca altera una evaluación.
+
+`evaluation/baseline-run-evaluation-observer.ts` implementa `BaselineRunObserver`:
+convierte la medición sin contenido de cada turno del chat baseline en un span y
+en filas de evaluación, evaluando sólo con `BaselineChatEvaluator` (los
+evaluadores compartidos juzgarían compuertas que el baseline no invoca). Espera
+la entrega con un tope de 2 s y nunca lanza: un fallo se cuenta en
+`failedDeliveries`, se notifica a `onFailure` con un código cerrado
+(`LiveDeliveryFailure`, nunca un mensaje del proveedor) y no altera la respuesta.
+
+`ports/evaluation-result-sink.ts` define `EvaluationResultSink`, el destino
+durable de los resultados de evaluación saneados. Devuelve un resultado con
+códigos cerrados de fallo y nunca lanza: persistir mal no altera una evaluación.
 `control-plane/rag-retrieval-runtime.ts` es el composition root que une un
 `KnowledgeGraphRuntime` (local o GCS) con `createRagStateGraph`. El servidor lo
 decora como `ragRetrievalRuntime` cuando hay bucket/local KG. El JEV de KG

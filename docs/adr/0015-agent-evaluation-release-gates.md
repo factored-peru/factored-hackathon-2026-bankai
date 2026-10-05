@@ -74,6 +74,43 @@ cuando exista su adaptador. No se instala ni levanta Docker de evaluación, ni
 se instalan o configuran LangSmith, DeepEval, Promptfoo, AgentEvals o
 DeepAgents en P0.
 
+Cada resultado de evaluación se persiste en BigQuery como un
+`EvaluationResultRecord` (`domain/observability/evaluation-result-record.ts`,
+`schemaVersion: "v1"`): una fila por fixture, ruta, métrica y evaluador, con
+`runId`, versiones de matriz, policy, catálogo y evaluador, `gate:
+"informational"` y el correlador HMAC de ADR 0012. No lleva contenido ni IDs
+crudos, y un campo adicional invalida el registro. El `insertId` de la inserción
+en streaming es la clave natural completa `runId:fixtureId:route:metric:evaluator`;
+la ruta forma parte de ella porque el golden set reutiliza un `fixtureId` en
+varias rutas y una clave que colisiona haría que BigQuery descartara una fila
+distinta. BigQuery sólo deduplica por `insertId` en una ventana de mejor
+esfuerzo, de modo que una lectura que necesite exactitud tras reintentos tardíos
+debe deduplicar por esa misma clave natural. Un cambio de esquema exige nueva
+`schemaVersion`; las columnas son las claves del registro en snake_case y
+coinciden con el esquema de la tabla declarado en `deploy/`. Los resultados van
+a un dataset propio, distinto del de datos de clientes
+(`BIGQUERY_EVAL_DATASET`). El adaptador y la tabla son opt-in tras
+`BIGQUERY_ENABLED`, y su creación en la nube requiere autorización explícita.
+
+`bun run eval:run -- --emit` envía una ejecución a esos destinos; sin `--emit`
+no sale nada ni se importa la configuración, por lo que la CI de PR no cambia.
+Quien pide emitir pide un efecto explícito, así que el comando sale con código 1
+si un canal configurado falla, si se descartan spans por incumplir el contrato o
+si no hay ningún canal configurado; el fallo no altera los resultados de la
+evaluación, que siguen siendo informativos. La salida es una línea JSON sin
+contenido ni claves.
+
+Las corridas reales del baseline usan el mismo registro `v1`: un observador
+(`BaselineRunObserver`) convierte la medición de cada turno en un contexto con
+`fixture_id=live-baseline`, `matrix_version=live-baseline-v1` y
+`policy_version=baseline-v1`, y sólo lo evalúa `BaselineChatEvaluator`, de modo
+que las filas llevan `evaluator=baseline_chat` y métricas `baseline_*`. No hay
+columna `pipeline`: el filtro es por `evaluator` o `matrix_version`. La latencia
+y los contadores de la corrida viajan en el span, no en la fila; llevarlos a
+BigQuery exige un esquema nuevo (`schemaVersion` v2 con columnas nulables).
+Cada turno usa un `run_id` propio, porque `fixture_id` es constante y de otro
+modo las claves de idempotencia colisionarían.
+
 El comparador `baseline` se evalúa como trayectoria `llm` separada. No se le
 aplican los criterios de aprobación del control plane: su evaluador determina
 que las compuertas fueron omitidas, que la llamada terminó y que se registró

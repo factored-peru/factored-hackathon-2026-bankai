@@ -64,6 +64,57 @@ un callback LangChain/LangGraph ni auto-instrumentación de proveedor, porque
 pueden capturar contenido. El recurso, nombre de span, atributos y eventos se
 validan contra una allowlist antes de exportar.
 
+Langfuse Cloud US recibe esos spans por OTLP/HTTP desde el exportador estándar
+de OpenTelemetry; no se usa el SDK de Langfuse ni su instrumentación, de modo
+que la allowlist es el único punto de salida. La allowlist es un contrato
+cerrado en `domain/observability/telemetry-attributes.ts`, común a spans,
+atributos de métricas OTel, Langfuse y registros BigQuery: claves nombradas, un
+catálogo cerrado de métricas de evaluación y valores con forma restringida
+(identificadores, códigos snake_case, pseudónimos hexadecimales), de modo que
+texto libre no pasa ni bajo una clave permitida. Las claves de contenido
+(`prompt`, `sql`, `tenantId`, `traceId`, etc.) se rechazan por nombre, y el
+error nombra la clave, nunca el valor. Los atributos de métricas OTel excluyen
+IDs, hashes y fixtures; sólo los spans llevan el pseudónimo de correlación.
+
+El destino es únicamente `https://us.cloud.langfuse.com`: la configuración no
+ofrece un endpoint OTLP libre, el arranque valida el host y las credenciales
+(`SVC-CORE-9017` a `9019`) y, con telemetría activa, rechaza cualquier variable
+`OTEL_EXPORTER_OTLP_*` del entorno porque el exportador estándar la mezclaría en
+cada petición. Antes de salir, un exportador de última compuerta descarta todo
+span con nombre o atributos fuera del contrato, eventos, enlaces, mensaje de
+estado libre o atributos de recurso inesperados; sólo los cuenta, sin
+registrarlos.
+
+El correlador de cada traza es un HMAC de su `trace_id` con una clave de
+entorno; nunca el `trace_id` de entrada. Es el mismo valor en el span de
+Langfuse y en la fila BigQuery, y rotar la clave corta la correlación histórica
+a propósito. Todos los turnos de una conexión WebSocket comparten `trace_id`
+(es el identificador de la petición de apertura), de modo que el correlador
+agrupa una conexión, no un turno; cada turno se distingue por su `run_id` en
+BigQuery.
+
+Las corridas reales del chat baseline (`CHAT_PIPELINE=baseline`) se registran
+con la misma frontera. Un observador convierte la medición sin contenido de cada
+turno en un span `evaluation` y en filas versionadas: `bankai.pipeline`,
+latencia, llamadas al modelo, intentos y éxitos de recuperación, un resultado y
+un código de error cerrado se añaden a la lista de atributos. Sólo se evalúan
+las métricas `baseline_*`: los evaluadores compartidos juzgan compuertas
+(guardrail, policy, aislamiento de tenant) que el baseline no invoca, y
+ejecutarlos informaría como superado algo que no ocurrió. Las filas se
+distinguen por `evaluator=baseline_chat`, `matrix_version=live-baseline-v1` y
+`fixture_id=live-baseline`.
+
+Entrega en el MVP y en producción. En el MVP cada turno espera el envío de su
+span y de sus filas, con un tope de 2 s, antes de cerrar: Cloud Run sólo asigna
+CPU mientras una petición está abierta, así que un envío por temporizador puede
+retrasarse o perderse. Es simple y fiable, a costa de unos cientos de
+milisegundos por turno, y un fallo o un backend lento se cuenta
+(`failedDeliveries`) sin afectar nunca a la respuesta. En producción el envío se
+desacopla del turno, con CPU siempre asignada o un colector de OpenTelemetry
+como sidecar que absorba la cola y reintente, junto con la tasa de muestreo y el
+presupuesto de unidades por entorno que este ADR ya exige antes de activar
+tráfico real.
+
 La traza permitida preserva el orden causal, no el contenido:
 
 ```text

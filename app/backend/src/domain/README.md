@@ -19,7 +19,11 @@ durables se resuelven por un puerto Firestore.
   roles y topes de filas y bytes facturados. Las comprobaciones que leen el SQL
   pertenecen al cargador del catálogo, no a este esquema.
 - `observability/`: eventos allowlisted sin contenido sensible.
-  `langfuse-allowlist.ts` fija atributos metadata-only para Langfuse/OTel.
+  `telemetry-attributes.ts` es el contrato cerrado de atributos metadata-only
+  para spans OTel/Langfuse y métricas de baja cardinalidad;
+  `evaluation-result-record.ts` define el registro versionado de resultados
+  que se persiste en BigQuery. El saneador que los aplica vive en
+  `services/observability/`.
 - `disputes/`: contratos de evidencia/caso, matriz de capacidades
   ALLOW/DENY/REQUIRE_APPROVAL (`capability-matrix.ts`) y pack sintético
   versionado (`demo-fixtures.ts`) para la demo local.

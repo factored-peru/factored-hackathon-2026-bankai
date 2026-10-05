@@ -1,0 +1,39 @@
+# Local only. Layered on backend-compose.yml and chat-compose.yml to run the
+# ungated baseline chat against REAL Vertex AI and BigQuery, optionally with
+# live telemetry to Langfuse Cloud US and BigQuery (ADR 0012 / 0015):
+#
+#   docker compose -f backend-compose.yml -f chat-compose.yml \
+#     -f baseline-live-compose.yml up --build
+#
+# Every message sent to this service is billed and reaches Vertex AI, so use
+# synthetic text only (ADR 0010). Nothing here is a secret: each value comes
+# from your shell, and the credentials file is mounted read-only from outside
+# the repository. GOOGLE_ADC_FILE is your own Application Default Credentials
+# file (gcloud auth application-default login); never copy it into Git.
+services:
+  base-bun-typescript-service:
+    environment:
+      CHAT_PIPELINE: baseline
+      BASELINE_CHAT_ENABLED: "true"
+      VERTEX_AI_ENABLED: "true"
+      VERTEX_AI_PROJECT_ID: ${VERTEX_AI_PROJECT_ID:?set VERTEX_AI_PROJECT_ID}
+      VERTEX_AI_LOCATION: ${VERTEX_AI_LOCATION:?set VERTEX_AI_LOCATION}
+      VERTEX_AI_MODEL: ${VERTEX_AI_MODEL:?set VERTEX_AI_MODEL}
+      BIGQUERY_ENABLED: "true"
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:?set GOOGLE_CLOUD_PROJECT}
+      GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:?set GOOGLE_CLOUD_LOCATION}
+      BIGQUERY_DATASET: ${BIGQUERY_DATASET:?set BIGQUERY_DATASET}
+      # Needed by the BigQuery-backed demo actors; any random local value.
+      DEMO_ACTOR_HMAC_KEY: ${DEMO_ACTOR_HMAC_KEY:?set DEMO_ACTOR_HMAC_KEY}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/credentials/adc.json
+      # Live telemetry is opt-in. OTEL_ENABLED and LANGFUSE_ENABLED go together
+      # and need both keys plus TELEMETRY_CORRELATOR_KEY (16+ characters).
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      TELEMETRY_CORRELATOR_KEY: ${TELEMETRY_CORRELATOR_KEY:-}
+      BIGQUERY_EVAL_DATASET: ${BIGQUERY_EVAL_DATASET:-}
+      BIGQUERY_EVAL_TABLE: ${BIGQUERY_EVAL_TABLE:-evaluation_results}
+    volumes:
+      - ${GOOGLE_ADC_FILE:?set GOOGLE_ADC_FILE}:/run/credentials/adc.json:ro

@@ -42,6 +42,18 @@ variable "pipeline_environment" {
   description = "Non-secret job configuration only."
 }
 
+variable "evaluation_dataset_id" {
+  type        = string
+  default     = "bankai_evaluation"
+  description = "Dataset for sanitized evaluation results; must differ from the customer-data dataset."
+}
+
+variable "evaluation_table_id" {
+  type        = string
+  default     = "evaluation_results"
+  description = "Table of sanitized evaluation results (schema_version v1)."
+}
+
 variable "upload_bucket_name" {
   type        = string
   default     = ""

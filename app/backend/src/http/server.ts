@@ -31,6 +31,7 @@ import {
 } from "../integrations/memory/in-memory-dispute-support-store.js";
 import { InMemorySessionStore } from "../integrations/memory/in-memory-session-store.js";
 import { MemoryItemStore } from "../integrations/memory-item-store.js";
+import { createLiveBaselineObserver } from "../integrations/observability/live-baseline-observer-runtime.js";
 import {
 	createProductiveDataStores,
 	type ProductiveDataStores,
@@ -53,6 +54,7 @@ import { ConversationService } from "../services/conversations/conversation-serv
 import { deterministicConversationRunner } from "../services/conversations/deterministic-conversation-runner.js";
 import { DisputeSupportService } from "../services/disputes/dispute-support-service.js";
 import { ItemService } from "../services/item-service.js";
+import type { BaselineRunObserver } from "../services/ports/baseline-chat.js";
 import type { DemoActorDirectory } from "../services/ports/conversation.js";
 import type { CustomerIdentityResolver } from "../services/ports/customer-identity.js";
 import type { LlmEphemeralCache } from "../services/ports/llm-ephemeral-cache.js";
@@ -165,9 +167,46 @@ export async function buildServer(options: BuildServerOptions = {}) {
 		});
 	}
 
+	// Live telemetry of the baseline chat (ADR 0012/0015). Null unless the
+	// baseline pipeline is selected and Langfuse or BigQuery persistence is on.
+	const liveBaselineObserver =
+		options.conversationRuntime === undefined
+			? await createLiveBaselineObserver(runtimeEnv, {
+					// Closed codes only: no message, id or content ever reaches the log.
+					onFailure: (reason) =>
+						app.log.warn(
+							{ event: "live_telemetry_delivery_failed", reason },
+							"live telemetry delivery failed",
+						),
+				})
+			: null;
+	if (liveBaselineObserver !== null) {
+		app.log.info(
+			{ event: "live_telemetry_enabled", ...liveBaselineObserver.channels },
+			"live telemetry enabled for the baseline chat",
+		);
+		app.addHook("onClose", async () => {
+			await liveBaselineObserver.shutdown();
+		});
+	}
+
+	if (
+		liveBaselineObserver === null &&
+		options.conversationRuntime === undefined &&
+		(runtimeEnv.OTEL_ENABLED || runtimeEnv.BIGQUERY_EVAL_DATASET.length > 0)
+	) {
+		app.log.warn(
+			{ event: "live_telemetry_not_used", pipeline: runtimeEnv.CHAT_PIPELINE },
+			"telemetry is configured but only CHAT_PIPELINE=baseline emits it",
+		);
+	}
+
 	registerErrorHandler(app);
 	const demoRuntime = runtimeEnv.DEMO_AUTH_ENABLED
 		? await createDemoRuntime(runtimeEnv, {
+				...(liveBaselineObserver === null
+					? {}
+					: { baselineObserver: liveBaselineObserver.observer }),
 				...(integrations.session
 					? { sessionRuntime: integrations.session }
 					: {}),
@@ -207,6 +246,7 @@ async function createDemoRuntime(
 		llmCache?: LlmEphemeralCache;
 		knowledgeGraphRuntime?: KnowledgeGraphRuntime | null;
 		productive?: ProductiveDataStores | null;
+		baselineObserver?: BaselineRunObserver;
 	} = {},
 ): Promise<DemoRuntime> {
 	const sessions = new CachingSessionStore(
@@ -245,6 +285,9 @@ async function createDemoRuntime(
 			? await createBaselineRunner(runtimeEnv, bqActors, {
 					llmCache: options.llmCache ?? new NoopLlmEphemeralCache(),
 					knowledgeGraphRuntime: options.knowledgeGraphRuntime ?? null,
+					...(options.baselineObserver === undefined
+						? {}
+						: { observer: options.baselineObserver }),
 				})
 			: deterministicConversationRunner;
 	const conversation: ConversationHttpRuntime = {
@@ -288,6 +331,7 @@ async function createBaselineRunner(
 	options: {
 		llmCache: LlmEphemeralCache;
 		knowledgeGraphRuntime: KnowledgeGraphRuntime | null;
+		observer?: BaselineRunObserver;
 	},
 ) {
 	if (demoActors === null) {
@@ -314,6 +358,7 @@ async function createBaselineRunner(
 			identity,
 		}),
 		maxRetrievalAttempts: runtimeEnv.BASELINE_MAX_RETRIEVAL_ATTEMPTS,
+		...(options.observer === undefined ? {} : { observer: options.observer }),
 		llmCache: options.llmCache,
 		llmCacheTtlSeconds: runtimeEnv.LLM_CACHE_TTL_SECONDS,
 		modelId: runtimeEnv.VERTEX_AI_MODEL || "baseline",
