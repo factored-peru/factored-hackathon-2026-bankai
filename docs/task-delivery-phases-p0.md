@@ -45,7 +45,7 @@ Resumen alineado con la auditoría del 2026-10-04 y la hoja:
 | Backend | Código, contratos, demo, guardrails, control plane, SessionManager y stores productivos (Firestore/Valkey) con seed de identidad demo; `bun test` + seed dry-run en CI. Cloud Run staging corre **chat baseline** (`CHAT_PIPELINE=baseline`, Vertex, BigQuery, demo auth). Abierto: Firebase Auth (Harumi), agentic, Model Armor cloud. |
 | Pipeline | **Fase 2** `stg`/`aux`/`cur` y **Fase 4** KDD/C1–C5/`graph-20261005-cur` publicados con lease. Sigue abierto ADR 0020 raw (Fase 3). |
 | Producto / baseline | Fase 0 cerrada. Fase 1 ejecutada sobre `factored-hackathon.hackathon`: motivos, volumen/severidad y baseline p50/p90 de resolución documentados. |
-| Evaluación | P0-40 `COMPLETED`. Matriz 48 core + 5 extensiones KG C1–C5 presente (P0-48 en progreso). CI E2E y baseline humana pendientes. |
+| Evaluación | P0-40 `COMPLETED`. P0-48 `COMPLETED`: matriz **48 core + 5 extensiones KG C1–C5** en gate CI (`eval:run`/`eval:gate`). Baseline humana y E2E (P0-39) pendientes. |
 | Infra | Cloud Run + Job + Redis/VPC + AR vivos (ver `task-status-gcp-20261005.md`). Correlador de telemetría aún plano → no `terraform apply`. Ingesta S3→GCS administrada no desplegada; `raw` sigue incompleto (no bloquea capa curada canónica). |
 | Frontend | Sin scaffold Next.js/App Hosting en el monorepo; bloquea smoke de integración de Ricardo. |
 
@@ -219,8 +219,9 @@ en la columna `Respuesta` de la hoja.
       KG-RAG gated vía GCS (`graph-20261005-cur`); C6–C8 bloqueados.
 - [~] Fase 5: composición productiva opt-in (demo/baseline + stores reales +
       seed identidad); Firebase Auth/agentic/Model Armor siguen abiertos.
-- [ ] Fase 6: CI determinista; E2E de caminos críticos; p50/p95; JEV real
-      manual/nocturno; P0-40 intacto.
+- [~] Fase 6: CI determinista con matriz **48 core + 5 extensiones KG C1–C5**
+      (`eval:run`/`eval:gate` en PR; P0-48 `COMPLETED`). Pendiente: E2E P0-39,
+      baseline humana / umbrales bloqueantes (ADR 0015), JEV nocturno.
 - [ ] Dependencias Harumi: interfaz Auth/CORS/smoke documentada; P0-38 no
       cerrado sin App Hosting + Auth.
 - [ ] Hoja `factored_tasks.xlsx` actualizada sin contradecir ADR; sin secretos
