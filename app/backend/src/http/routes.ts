@@ -16,6 +16,10 @@ import { errorCodes } from "../domain/error-codes.js";
 import { AppError } from "../domain/errors.js";
 import { createItemSchema } from "../domain/items.js";
 import type { SessionContext, SessionStore } from "../domain/session.js";
+import type {
+	KgAdminError,
+	KgAdminService,
+} from "../services/admin/kg-admin-service.js";
 import type { ConversationService } from "../services/conversations/conversation-service.js";
 import type { DisputeSupportService } from "../services/disputes/dispute-support-service.js";
 import type { ItemService } from "../services/item-service.js";
@@ -168,6 +172,26 @@ function originAllowed(request: FastifyRequest, runtimeEnv: Env): boolean {
 	return typeof origin === "string" && allowed.includes(origin);
 }
 
+function requireBackoffice(session: SessionContext): void {
+	if (!session.roles.includes("backoffice")) {
+		throw new AppError(errorCodes.INSUFFICIENT_SCOPE);
+	}
+}
+
+function mapKgAdminError(error: unknown): never {
+	if (error && typeof error === "object" && "code" in error) {
+		const code = (error as KgAdminError).code;
+		if (code === "not_found")
+			throw new AppError(errorCodes.RESOURCE_STATE_CONFLICT);
+		if (code === "forbidden") throw new AppError(errorCodes.INSUFFICIENT_SCOPE);
+		if (code === "invalid")
+			throw new AppError(errorCodes.SCHEMA_VALIDATION_FAILED);
+		if (code === "conflict")
+			throw new AppError(errorCodes.RESOURCE_STATE_CONFLICT);
+	}
+	throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+}
+
 export function registerRoutes(
 	app: FastifyInstance,
 	itemService: ItemService,
@@ -175,6 +199,7 @@ export function registerRoutes(
 	integrations?: AppIntegrations,
 	disputeRuntime?: DisputeHttpRuntime,
 	conversationRuntime?: ConversationHttpRuntime,
+	kgAdminService: KgAdminService | null = null,
 ): void {
 	app.get("/openapi.json", async () => Bun.file(openApiSpecUrl).json());
 	app.get("/asyncapi.json", async () => Bun.file(asyncApiSpecUrl).json());
@@ -371,6 +396,89 @@ export function registerRoutes(
 			capabilities: session.capabilities,
 			sessionVersion: session.sessionVersion,
 		};
+	});
+
+	app.get("/v1/admin/kg/current", async (request) => {
+		if (!kgAdminService) throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		requireBackoffice(session);
+		try {
+			return await kgAdminService.current();
+		} catch (error) {
+			mapKgAdminError(error);
+		}
+	});
+
+	app.get("/v1/admin/kg/versions", async (request) => {
+		if (!kgAdminService) throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		requireBackoffice(session);
+		return { versions: await kgAdminService.versions() };
+	});
+
+	app.get("/v1/admin/kg/diff", async (request) => {
+		if (!kgAdminService) throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		requireBackoffice(session);
+		const query = request.query as { from?: unknown; to?: unknown };
+		if (typeof query.from !== "string" || typeof query.to !== "string") {
+			throw new AppError(errorCodes.SCHEMA_VALIDATION_FAILED);
+		}
+		try {
+			return await kgAdminService.diff({ from: query.from, to: query.to });
+		} catch (error) {
+			mapKgAdminError(error);
+		}
+	});
+
+	app.post("/v1/admin/kg/promote", async (request) => {
+		if (!kgAdminService) throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		requireBackoffice(session);
+		const body = request.body as { run_id?: unknown };
+		if (typeof body?.run_id !== "string") {
+			throw new AppError(errorCodes.SCHEMA_VALIDATION_FAILED);
+		}
+		try {
+			return await kgAdminService.promote(body.run_id);
+		} catch (error) {
+			mapKgAdminError(error);
+		}
+	});
+
+	app.post("/v1/admin/kg/rollback", async (request) => {
+		if (!kgAdminService) throw new AppError(errorCodes.DEPENDENCY_UNAVAILABLE);
+		const session = await requireConversationSession(
+			request,
+			conversationRuntime,
+			runtimeEnv,
+		);
+		requireBackoffice(session);
+		const body = request.body as { to_run_id?: unknown };
+		if (typeof body?.to_run_id !== "string") {
+			throw new AppError(errorCodes.SCHEMA_VALIDATION_FAILED);
+		}
+		try {
+			return await kgAdminService.rollback(body.to_run_id);
+		} catch (error) {
+			mapKgAdminError(error);
+		}
 	});
 
 	app.get("/v1/conversations", async (request) => {

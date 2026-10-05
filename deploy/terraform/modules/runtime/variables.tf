@@ -47,3 +47,27 @@ variable "evaluation_table_id" {
   default     = "evaluation_results"
   description = "Table of sanitized evaluation results (schema_version v1)."
 }
+
+variable "upload_bucket_name" {
+  type        = string
+  default     = ""
+  description = "When set, injected as GCS_UPLOAD_BUCKET and productive Firestore/GCS flags."
+}
+
+variable "kv_url" {
+  type        = string
+  default     = ""
+  description = "When set, injected as KV_URL with SESSION_STORE_ENABLED=true."
+}
+
+variable "vpc_connector_id" {
+  type        = string
+  default     = ""
+  description = "Optional Serverless VPC Access connector for Memorystore reachability."
+}
+
+variable "inject_productive_flags" {
+  type        = bool
+  default     = true
+  description = "Merge staging productive flags when upload bucket / kv_url are supplied."
+}

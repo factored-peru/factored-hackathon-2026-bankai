@@ -23,6 +23,9 @@
 		},
 		{
 			"name": "conversations"
+		},
+		{
+			"name": "admin"
 		}
 	],
 	"paths": {
@@ -891,6 +894,317 @@
 				},
 				"security": [{ "sessionCookie": [] }]
 			}
+		},
+		"/v1/admin/kg/current": {
+			"get": {
+				"operationId": "getAdminKgCurrent",
+				"tags": ["admin"],
+				"summary": "Get the current published KG pointer for the session tenant",
+				"description": "Backoffice-only. Returns current.json for the configured local publication root. Payload for P0-16/Harumi without Next scaffold.",
+				"security": [{ "sessionCookie": [] }],
+				"responses": {
+					"200": {
+						"description": "Current KG pointer",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/KgCurrentPointer" }
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid session",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Requires backoffice role",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "No current pointer",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"503": {
+						"description": "KG admin store unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/admin/kg/versions": {
+			"get": {
+				"operationId": "listAdminKgVersions",
+				"tags": ["admin"],
+				"summary": "List immutable published KG run_id packages",
+				"security": [{ "sessionCookie": [] }],
+				"responses": {
+					"200": {
+						"description": "Published versions",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["versions"],
+									"properties": {
+										"versions": {
+											"type": "array",
+											"items": {
+												"$ref": "#/components/schemas/KgVersionSummary"
+											}
+										}
+									},
+									"additionalProperties": false
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid session",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Requires backoffice role",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"503": {
+						"description": "KG admin store unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/admin/kg/diff": {
+			"get": {
+				"operationId": "getAdminKgDiff",
+				"tags": ["admin"],
+				"summary": "Compare two published KG packages",
+				"description": "Lightweight package diff for backoffice. Full consensus Jaccard gate remains CLI graph-diff.",
+				"security": [{ "sessionCookie": [] }],
+				"parameters": [
+					{
+						"name": "from",
+						"in": "query",
+						"required": true,
+						"schema": { "type": "string", "minLength": 3 }
+					},
+					{
+						"name": "to",
+						"in": "query",
+						"required": true,
+						"schema": { "type": "string", "minLength": 3 }
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Package diff",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/KgPackageDiff" }
+							}
+						}
+					},
+					"400": {
+						"description": "Missing from/to",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid session",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Requires backoffice role",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "Version missing",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"503": {
+						"description": "KG admin store unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/admin/kg/promote": {
+			"post": {
+				"operationId": "promoteAdminKg",
+				"tags": ["admin"],
+				"summary": "Point current.json at an immutable published run_id",
+				"description": "Backoffice promote for local demo root. Live GCS promote/rollback with lease remains CLI publish until cloud write is authorized.",
+				"security": [{ "sessionCookie": [] }],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": { "$ref": "#/components/schemas/KgPromoteRequest" }
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated current pointer",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/KgCurrentPointer" }
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid body",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid session",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Requires backoffice role",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "run_id package missing",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"503": {
+						"description": "KG admin store unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/admin/kg/rollback": {
+			"post": {
+				"operationId": "rollbackAdminKg",
+				"tags": ["admin"],
+				"summary": "Rollback current.json to a previous immutable run_id",
+				"security": [{ "sessionCookie": [] }],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": { "$ref": "#/components/schemas/KgRollbackRequest" }
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated current pointer",
+						"content": {
+							"application/json": {
+								"schema": { "$ref": "#/components/schemas/KgCurrentPointer" }
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid body",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid session",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"403": {
+						"description": "Requires backoffice role",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"409": {
+						"description": "run_id package missing",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					},
+					"503": {
+						"description": "KG admin store unavailable",
+						"content": {
+							"application/problem+json": {
+								"schema": { "$ref": "#/components/schemas/Problem" }
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -1301,6 +1615,118 @@
 						"type": "object",
 						"additionalProperties": true
 					}
+				},
+				"additionalProperties": false
+			},
+			"KgCurrentPointer": {
+				"type": "object",
+				"required": [
+					"schema_version",
+					"tenant_id",
+					"run_id",
+					"catalog_version",
+					"artifact_dir",
+					"files",
+					"provenance"
+				],
+				"properties": {
+					"schema_version": {
+						"type": "string",
+						"const": "bankai-local-kg-publication-v1"
+					},
+					"tenant_id": { "type": "string", "minLength": 1 },
+					"run_id": { "type": "string", "minLength": 3 },
+					"catalog_version": { "type": "string", "minLength": 1 },
+					"artifact_dir": { "type": "string", "minLength": 3 },
+					"files": {
+						"type": "object",
+						"required": [
+							"graph-v1.msgpack",
+							"graph-manifest.json",
+							"kg-operation-catalog.json"
+						],
+						"properties": {
+							"graph-v1.msgpack": {
+								"type": "string",
+								"pattern": "^[a-f0-9]{64}$"
+							},
+							"graph-manifest.json": {
+								"type": "string",
+								"pattern": "^[a-f0-9]{64}$"
+							},
+							"kg-operation-catalog.json": {
+								"type": "string",
+								"pattern": "^[a-f0-9]{64}$"
+							}
+						},
+						"additionalProperties": false
+					},
+					"provenance": {
+						"type": "object",
+						"required": ["kdd_run_id", "case_catalog_version"],
+						"properties": {
+							"kdd_run_id": { "type": "string", "minLength": 1 },
+							"case_catalog_version": { "type": ["string", "null"] }
+						},
+						"additionalProperties": false
+					}
+				},
+				"additionalProperties": false
+			},
+			"KgVersionSummary": {
+				"type": "object",
+				"required": ["run_id", "catalog_version", "graph_sha256", "is_current"],
+				"properties": {
+					"run_id": { "type": "string", "minLength": 3 },
+					"catalog_version": { "type": ["string", "null"] },
+					"graph_sha256": { "type": ["string", "null"] },
+					"is_current": { "type": "boolean" }
+				},
+				"additionalProperties": false
+			},
+			"KgPackageDiff": {
+				"type": "object",
+				"required": [
+					"from_run_id",
+					"to_run_id",
+					"from_catalog_version",
+					"to_catalog_version",
+					"from_graph_sha256",
+					"to_graph_sha256",
+					"identical",
+					"from_node_count",
+					"to_node_count",
+					"from_edge_count",
+					"to_edge_count"
+				],
+				"properties": {
+					"from_run_id": { "type": "string" },
+					"to_run_id": { "type": "string" },
+					"from_catalog_version": { "type": ["string", "null"] },
+					"to_catalog_version": { "type": ["string", "null"] },
+					"from_graph_sha256": { "type": ["string", "null"] },
+					"to_graph_sha256": { "type": ["string", "null"] },
+					"identical": { "type": "boolean" },
+					"from_node_count": { "type": ["integer", "null"] },
+					"to_node_count": { "type": ["integer", "null"] },
+					"from_edge_count": { "type": ["integer", "null"] },
+					"to_edge_count": { "type": ["integer", "null"] }
+				},
+				"additionalProperties": false
+			},
+			"KgPromoteRequest": {
+				"type": "object",
+				"required": ["run_id"],
+				"properties": {
+					"run_id": { "type": "string", "minLength": 3 }
+				},
+				"additionalProperties": false
+			},
+			"KgRollbackRequest": {
+				"type": "object",
+				"required": ["to_run_id"],
+				"properties": {
+					"to_run_id": { "type": "string", "minLength": 3 }
 				},
 				"additionalProperties": false
 			}

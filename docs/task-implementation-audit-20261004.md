@@ -17,11 +17,11 @@ No sustituye los ADR ni convierte la hoja de cálculo en arquitectura normativa.
 | P0-06, P0-07 | En progreso | Contratos y perfiles agregados locales; faltan metadata real, freshness y drift sobre BigQuery autorizado. |
 | P0-08, P0-09, P0-10, P0-44 | En progreso local | Preparación determinista, reglas de imputación y lineage existen; falta worker ADR 0020, vistas y tablas BigQuery. |
 | P0-11, P0-12 | En progreso | KDD y el modelo CRISP-DM/KDD están documentados; la ejecución reproducible sobre datos curados depende del pipeline cloud. |
-| P0-13, P0-14, P0-15, P0-28 | En progreso local | Ontología agregada, compilador, publicación local, catálogo cerrado y lector GCS validable con dobles existen; falta publicación GCS y lease Firestore. |
-| P0-21, P0-22, P0-24–26, P0-29, P0-30, P0-35, P0-47 | En progreso | Contratos, demo, guardrails, control plane, puertos y dobles están presentes; faltan composición productiva, Firebase/Firestore/Valkey reales y pruebas de integración contra servicios autorizados. |
+| P0-13, P0-14, P0-15, P0-28 | Codigo listo; ops pendientes | Ontología, compilador, publish local/**GCS+lease**, catálogo cerrado y lector GCS existen. Falta `terraform apply`, publish real autorizado y smoke Cloud Run. |
+| P0-21, P0-22, P0-24–26, P0-29, P0-30, P0-35, P0-47 | En progreso | Contratos y dobles presentes; `ragRetrievalRuntime` y stores productivos (Firestore/GCS) se decoran en server cuando hay flags. Falta Auth Firebase end-to-end, Valkey prod y ruta HTTP agentic completa. |
 | P0-40 | Completada P0 | Evaluadores TypeScript deterministas, sin proveedores ni contenido. |
 | P0-48 | En progreso | 48 goldens base y 5 extensiones C1–C5; falta integrar el runner a CI y, posteriormente, la línea base humana. |
-| P0-37 | Pendiente de activación | Terraform declarativo para backend, Job y bucket; falta imagen aprobada, APIs, recursos de ingesta, validación de provider y despliegue autorizado. |
+| P0-37 | Prep parcial | Módulo TF runtime (bucket/SA/Run/Job) + Dockerfile pipeline + script `deploy/scripts/gcp-kg-ready.sh`. Falta apply, imagen en AR, STS/Eventarc/Tasks/Functions e ingestion worker. |
 
 ## Decisiones preservadas
 

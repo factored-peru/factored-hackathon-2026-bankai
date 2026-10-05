@@ -19,6 +19,8 @@ export interface KeyValueStore {
 	hashGetAll(key: string): Promise<Record<string, string>>;
 	expire(key: string, seconds: number): Promise<void>;
 	delete(key: string): Promise<boolean>;
+	get(key: string): Promise<string | null>;
+	set(key: string, value: string, ttlSeconds: number): Promise<void>;
 	setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean>;
 	getAndDelete(key: string): Promise<string | null>;
 	isReady(): boolean;

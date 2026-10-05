@@ -25,3 +25,8 @@ output "evaluation_dataset" {
 output "evaluation_table" {
   value = google_bigquery_table.evaluation_results.table_id
 }
+
+output "effective_backend_environment_keys" {
+  description = "Non-secret env keys merged into Cloud Run (values may include hosts)."
+  value       = sort(keys(local.backend_env))
+}

@@ -1,25 +1,35 @@
 import { createHmac } from "node:crypto";
 import type { BigQuery } from "@google-cloud/bigquery";
 import type { DemoActorDirectory } from "../../services/ports/conversation.js";
+import { withLruCache } from "../cache/lru-memo.js";
 
 type CustomerRow = { customer_id?: unknown };
 
 /**
  * Closed demo cohort query. It only returns customer identifiers inside the
  * backend, then converts them to opaque HMAC aliases before the HTTP boundary.
+ * Cohort rows are LRU-cached briefly to avoid re-querying BigQuery per list/resolve.
  */
 export class BigQueryDemoActorDirectory implements DemoActorDirectory {
+	private readonly cachedCustomers;
+
 	constructor(
 		private readonly bigquery: BigQuery,
 		private readonly project: string,
 		private readonly dataset: string,
 		private readonly hmacKey: string,
-	) {}
+	) {
+		this.cachedCustomers = withLruCache(() => this.queryCustomers(), {
+			maxEntries: 1,
+			ttlMs: 60_000,
+			keyFn: () => "cohort",
+		});
+	}
 
 	async list() {
-		const customers = await this.customers();
+		const customers = await this.cachedCustomers.get();
 		return [
-			...customers.map((customerId, index) => ({
+			...customers.map((customerId: string, index: number) => ({
 				actorId: this.actorId(customerId),
 				label:
 					index === 0
@@ -50,8 +60,8 @@ export class BigQueryDemoActorDirectory implements DemoActorDirectory {
 					"dispute.escalation.decide",
 				],
 			};
-		const customer = (await this.customers()).find(
-			(customerId) => this.actorId(customerId) === actorId,
+		const customer = (await this.cachedCustomers.get()).find(
+			(customerId: string) => this.actorId(customerId) === actorId,
 		);
 		return customer
 			? {
@@ -72,13 +82,13 @@ export class BigQueryDemoActorDirectory implements DemoActorDirectory {
 	async customerIdForActor(actorId: string): Promise<string | null> {
 		if (actorId === "demo-backoffice-1") return null;
 		return (
-			(await this.customers()).find(
-				(customerId) => this.actorId(customerId) === actorId,
+			(await this.cachedCustomers.get()).find(
+				(customerId: string) => this.actorId(customerId) === actorId,
 			) ?? null
 		);
 	}
 
-	private async customers(): Promise<string[]> {
+	private async queryCustomers(): Promise<string[]> {
 		const query = `
 SELECT customer_id
 FROM (

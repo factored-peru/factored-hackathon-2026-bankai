@@ -57,6 +57,8 @@ app/backend/src/**/*.js
 app/backend/tests/**/*.js
 app/backend/casos.txt
 app/backend/.local/
+# Volatile local probes (AGENTS.md); never CI lint surface.
+app/backend/tmp/
 
 # Python packaging artifacts
 *.egg-info/

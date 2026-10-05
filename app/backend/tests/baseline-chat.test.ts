@@ -42,6 +42,8 @@ describe("ungated baseline chat", () => {
 						system: BASELINE_SYSTEM_PROMPT,
 						user: "¿Cuál es el estado de mi producto?",
 						tool: toolDefinition,
+						stablePrefix:
+							"bankai_cache_context catalogVersion=none graphRunId=none",
 					});
 					return toolTurn("call-1");
 				},
@@ -174,6 +176,67 @@ describe("ungated baseline chat", () => {
 				}),
 			).CHAT_PIPELINE,
 		).toBe("baseline");
+	});
+
+	test("serves an exact-match cache hit without calling the model", async () => {
+		const measurements: BaselineRunMeasurement[] = [];
+		let begins = 0;
+		const cache = {
+			async getExact() {
+				return {
+					text: "Respuesta cacheada.",
+					model: "baseline",
+					createdAt: "2026-10-04T00:00:00.000Z",
+				};
+			},
+			async setExact() {
+				throw new Error("setExact should not run on hit");
+			},
+		};
+		const runner = new BaselineConversationRunner({
+			model: {
+				async begin() {
+					begins += 1;
+					return { kind: "final", text: "miss" };
+				},
+				async continue() {
+					return { kind: "final", text: "miss" };
+				},
+			},
+			tool: readyTool(),
+			maxRetrievalAttempts: 2,
+			llmCache: cache,
+			modelId: "baseline",
+			observer: {
+				async record(measurement) {
+					measurements.push(measurement);
+				},
+			},
+			nowMs: counterClock(),
+		});
+		const deltas: string[] = [];
+		const result = await runner.run({
+			session,
+			threadId: "thread-private",
+			traceId: "trace-cache",
+			message: "¿Cuál es el estado de mi producto?",
+			onDelta: async (value) => {
+				deltas.push(value);
+			},
+		});
+		expect(result).toEqual({
+			status: "completed",
+			response: "Respuesta cacheada.",
+		});
+		expect(begins).toBe(0);
+		expect(deltas.join("")).toBe("Respuesta cacheada.");
+		expect(measurements[0]).toEqual(
+			expect.objectContaining({
+				modelCallCount: 0,
+				retrievalAttemptCount: 0,
+				errorCode: null,
+			}),
+		);
 	});
 
 	test("labels ungated behavior and retrieval measurement as baseline-specific results", () => {

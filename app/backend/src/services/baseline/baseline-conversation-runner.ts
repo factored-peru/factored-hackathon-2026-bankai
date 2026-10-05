@@ -1,3 +1,4 @@
+import { hashLlmPromptParts } from "../llm/prompt-hash.js";
 import type {
 	BaselineChatModel,
 	BaselineContextTool,
@@ -5,7 +6,13 @@ import type {
 	BaselineRunObserver,
 } from "../ports/baseline-chat.js";
 import type { ConversationRunner } from "../ports/conversation.js";
+import type { LlmEphemeralCache } from "../ports/llm-ephemeral-cache.js";
 import { BASELINE_SYSTEM_PROMPT } from "./bankai-table-declaration.js";
+
+type BaselineCacheVersions = Readonly<{
+	graphRunId: string;
+	catalogVersion: string;
+}>;
 
 type BaselineConversationRunnerOptions = Readonly<{
 	model: BaselineChatModel;
@@ -13,6 +20,15 @@ type BaselineConversationRunnerOptions = Readonly<{
 	maxRetrievalAttempts: number;
 	observer?: BaselineRunObserver;
 	nowMs?: () => number;
+	/** Exact-match Valkey cache; omit or use noop when LLM_CACHE_ENABLED=false. */
+	llmCache?: LlmEphemeralCache;
+	llmCacheTtlSeconds?: number;
+	modelId?: string;
+	/** Resolves graph/catalog versions for cache key invalidation. */
+	resolveCacheVersions?: (input: {
+		tenantId: string;
+		userId: string;
+	}) => Promise<BaselineCacheVersions>;
 }>;
 
 /**
@@ -34,10 +50,47 @@ export class BaselineConversationRunner {
 		let retrievalSuccessCount = 0;
 		try {
 			const tool = await this.options.tool.describe();
+			const versions = await this.resolveVersions(input.session);
+			const cache = this.options.llmCache;
+			const modelId = this.options.modelId ?? "baseline";
+			const promptHash = hashLlmPromptParts({
+				modelId,
+				system: BASELINE_SYSTEM_PROMPT,
+				userSanitized: input.message,
+				toolsSchemaJson: JSON.stringify(tool),
+				graphRunId: versions.graphRunId,
+				catalogVersion: versions.catalogVersion,
+			});
+			const cacheKey = {
+				tenantId: input.session.tenantId,
+				userId: input.session.userId,
+				modelId,
+				operation: "baseline" as const,
+				promptHash,
+				graphRunId: versions.graphRunId,
+				catalogVersion: versions.catalogVersion,
+			};
+
+			if (cache !== undefined) {
+				const cached = await cache.getExact(cacheKey);
+				if (cached !== null && cached.text.trim().length > 0) {
+					return await this.complete(
+						input,
+						startedAt,
+						cached.text,
+						0,
+						0,
+						0,
+						null,
+					);
+				}
+			}
+
 			const first = await this.options.model.begin({
 				system: BASELINE_SYSTEM_PROMPT,
 				user: input.message,
 				tool,
+				stablePrefix: stableProviderPrefix(versions),
 			});
 			modelCallCount += 1;
 			let turn = first;
@@ -67,11 +120,27 @@ export class BaselineConversationRunner {
 					tool,
 					call: turn.call,
 					result,
+					stablePrefix: stableProviderPrefix(versions),
 				});
 				modelCallCount += 1;
 			}
 			if (turn.text === undefined || turn.text.trim().length === 0) {
 				throw new Error("baseline_model_no_response");
+			}
+			if (cache !== undefined) {
+				try {
+					await cache.setExact(
+						cacheKey,
+						{
+							text: turn.text,
+							model: modelId,
+							createdAt: new Date().toISOString(),
+						},
+						this.options.llmCacheTtlSeconds ?? 600,
+					);
+				} catch {
+					// Cache write must not fail the ungated comparator turn.
+				}
 			}
 			return await this.complete(
 				input,
@@ -97,6 +166,20 @@ export class BaselineConversationRunner {
 			throw error;
 		}
 	};
+
+	private async resolveVersions(session: {
+		tenantId: string;
+		userId: string;
+	}): Promise<BaselineCacheVersions> {
+		if (this.options.resolveCacheVersions === undefined) {
+			return { graphRunId: "none", catalogVersion: "none" };
+		}
+		try {
+			return await this.options.resolveCacheVersions(session);
+		} catch {
+			return { graphRunId: "none", catalogVersion: "none" };
+		}
+	}
 
 	private async complete(
 		input: Parameters<ConversationRunner>[0],
@@ -151,4 +234,8 @@ export class BaselineConversationRunner {
 			// Observability must not make the already-ungated comparator unavailable.
 		}
 	}
+}
+
+function stableProviderPrefix(versions: BaselineCacheVersions): string {
+	return `bankai_cache_context catalogVersion=${versions.catalogVersion} graphRunId=${versions.graphRunId}`;
 }

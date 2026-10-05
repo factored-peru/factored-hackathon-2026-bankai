@@ -49,6 +49,31 @@ resource "google_project_iam_member" "pipeline_firestore_user" {
   member  = "serviceAccount:${google_service_account.pipeline.email}"
 }
 
+locals {
+  productive_flags = var.inject_productive_flags ? merge(
+    var.upload_bucket_name != "" ? {
+      FIRESTORE_ENABLED = "true"
+      GCS_ENABLED       = "true"
+      GCS_UPLOAD_BUCKET = var.upload_bucket_name
+      GCS_UPLOAD_PREFIX = "conversation-uploads/"
+    } : {},
+    var.kv_url != "" ? {
+      SESSION_STORE_ENABLED = "true"
+      KV_PROVIDER           = "valkey"
+      KV_URL                = var.kv_url
+      KV_TLS                = "false"
+    } : {},
+  ) : {}
+
+  backend_env = merge(
+    var.backend_environment,
+    local.productive_flags,
+    {
+      GCS_GRAPH_BUCKET = google_storage_bucket.kg_artifacts.name
+    },
+  )
+}
+
 resource "google_cloud_run_v2_service" "backend" {
   name     = "${var.name_prefix}-backend"
   location = var.region
@@ -56,6 +81,14 @@ resource "google_cloud_run_v2_service" "backend" {
 
   template {
     service_account = google_service_account.backend.email
+
+    dynamic "vpc_access" {
+      for_each = var.vpc_connector_id != "" ? [var.vpc_connector_id] : []
+      content {
+        connector = vpc_access.value
+        egress    = "PRIVATE_RANGES_ONLY"
+      }
+    }
 
     containers {
       image = var.backend_image
@@ -65,9 +98,7 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       dynamic "env" {
-        for_each = merge(var.backend_environment, {
-          GCS_GRAPH_BUCKET = google_storage_bucket.kg_artifacts.name
-        })
+        for_each = local.backend_env
         content {
           name  = env.key
           value = env.value
@@ -79,6 +110,13 @@ resource "google_cloud_run_v2_service" "backend" {
   traffic {
     percent = 100
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+  }
+
+  # CI updates digests via gcloud; Terraform owns env, VPC, IAM, and scaling.
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+    ]
   }
 }
 
@@ -107,5 +145,11 @@ resource "google_cloud_run_v2_job" "pipeline" {
         }
       }
     }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].template[0].containers[0].image,
+    ]
   }
 }

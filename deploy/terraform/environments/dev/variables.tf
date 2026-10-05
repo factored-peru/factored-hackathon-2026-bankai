@@ -24,6 +24,11 @@ variable "kg_artifact_bucket_name" {
   type = string
 }
 
+variable "upload_bucket_name" {
+  type        = string
+  description = "Globally unique private bucket for conversation attachment uploads."
+}
+
 variable "backend_environment" {
   type    = map(string)
   default = {}

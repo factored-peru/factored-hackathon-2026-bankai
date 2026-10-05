@@ -26,6 +26,16 @@ export class RespKeyValueStore implements KeyValueStore {
 		return (await this.client.del(key)) > 0;
 	}
 
+	get(key: string): Promise<string | null> {
+		return this.client.get(key);
+	}
+
+	async set(key: string, value: string, ttlSeconds: number): Promise<void> {
+		await this.client.set(key, value, {
+			expiration: { type: "EX", value: ttlSeconds },
+		});
+	}
+
 	async setIfAbsent(
 		key: string,
 		value: string,

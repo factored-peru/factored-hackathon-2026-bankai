@@ -37,6 +37,11 @@ métrica y registros BigQuery y los valida contra el contrato cerrado de
 `ports/evaluation-result-sink.ts` define `EvaluationResultSink`, el destino
 durable de los resultados de evaluación saneados. Devuelve un resultado con
 códigos cerrados de fallo y nunca lanza: persistir mal no altera una evaluación.
+`control-plane/rag-retrieval-runtime.ts` es el composition root que une un
+`KnowledgeGraphRuntime` (local o GCS) con `createRagStateGraph`. El servidor lo
+decora como `ragRetrievalRuntime` cuando hay bucket/local KG. El JEV de KG
+default niega hasta inyectar un selector productivo; Structured RAG permanece
+opt-in.
 
 `ports/customer-identity.ts` define `CustomerIdentityResolver`: devuelve el
 `customer_id` de la sesión verificada o `null`. Las consultas de datos usan ese
@@ -105,10 +110,16 @@ ambos comparten solamente el puerto `ConversationRunner`. El baseline recibe un
 un `BaselineContextTool`. El tool reutiliza mecánica de `QueryPlan` (binding de
 sesión y límites de ejecución) pero no el selector, gates ni evidencia de la
 ruta gobernada. `BaselineRunObserver` recibe únicamente mediciones saneadas
-para evaluación comparativa.
+para evaluación comparativa. Con `LLM_CACHE_ENABLED`, consulta
+`LlmEphemeralCache` (Valkey `llm:resp:v1:`) antes de Vertex; la clave lleva
+`graphRunId`/`catalogVersion` y el hash del mensaje ya tratado como entrada de
+cache (sin guardar el prompt crudo).
+
+`ports/llm-ephemeral-cache.ts` y `llm/prompt-hash.ts` definen el exact-match
+efímero; la implementación es `integrations/kv/kv-llm-cache.ts`.
 
 - `ports/` contiene interfaces para modelos, guardrails, policy, tools,
-  retrieval, workflows, idempotencia y auditoría.
+  retrieval, workflows, idempotencia, auditoría y cache LLM efímero.
 - `control-plane/` implementa el orden de mediación y los presupuestos.
 - `tools/` valida registry, argumentos, capability, policy, timeout, output e
   idempotencia antes y después de ejecutar.

@@ -54,6 +54,10 @@ decisión de negocio.
 
 - `SESSION_*`, `KV_*`, `AUTH_*` y `CSRF_SECRET`: Firebase, SessionManager y
   Memorystore for Valkey. La conexión gestionada usa TLS, IAM y red privada.
+- `LLM_CACHE_ENABLED` / `LLM_CACHE_TTL_SECONDS`: exact-match de respuestas LLM
+  en el mismo Memorystore (`llm:resp:v1:`). Off por defecto; exige `KV_URL`
+  (`SVC-CORE-9017`). No guarda prompts crudos ni evidencia; la clave incluye
+  versión de catálogo/grafo.
 - `FIRESTORE_*`, `BIGQUERY_*`, `GCS_*` y `GOOGLE_*`: estado durable,
   Structured RAG, KG-RAG y recursos Google Cloud mediante ADC/IAM.
 - `GCS_GRAPH_BUCKET`, `GCS_GRAPH_TENANT_ID` y `GCS_GRAPH_ARTIFACT_PREFIX`:

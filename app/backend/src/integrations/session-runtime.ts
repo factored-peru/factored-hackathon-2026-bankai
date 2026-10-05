@@ -1,6 +1,11 @@
 import type { Env } from "../config/env.js";
 import type { PrivateDataBroker, SessionStore } from "../domain/session.js";
-import type { KeyValueStoreFactory } from "./kv/key-value-store.js";
+import type { LlmEphemeralCache } from "../services/ports/llm-ephemeral-cache.js";
+import type {
+	KeyValueStore,
+	KeyValueStoreFactory,
+} from "./kv/key-value-store.js";
+import { KvLlmCache, NoopLlmEphemeralCache } from "./kv/kv-llm-cache.js";
 import {
 	KvPrivateDataBroker,
 	privateDataEncryptionKeyFromConfig,
@@ -11,35 +16,40 @@ import { RespKeyValueStoreFactory } from "./kv/resp-key-value-store.js";
 export type SessionRuntime = Readonly<{
 	sessionStore: SessionStore;
 	privateDataBroker: PrivateDataBroker;
+	llmCache: LlmEphemeralCache;
 	isReady(): boolean;
 	close(): Promise<void>;
 }>;
 
+export type LlmCacheRuntime = Readonly<{
+	llmCache: LlmEphemeralCache;
+	isReady(): boolean;
+	close(): Promise<void>;
+}>;
+
+type KvSettings = Pick<
+	Env,
+	| "KV_PROVIDER"
+	| "KV_URL"
+	| "KV_USERNAME"
+	| "KV_PASSWORD"
+	| "KV_TLS"
+	| "KV_KEY_PREFIX"
+	| "SESSION_TTL_SECONDS"
+	| "HANDLE_TTL_SECONDS"
+	| "PRIVATE_DATA_ENCRYPTION_KEY"
+	| "LLM_CACHE_ENABLED"
+	| "LLM_CACHE_TTL_SECONDS"
+>;
+
 export async function createSessionRuntime(
-	settings: Pick<
-		Env,
-		| "KV_PROVIDER"
-		| "KV_URL"
-		| "KV_USERNAME"
-		| "KV_PASSWORD"
-		| "KV_TLS"
-		| "KV_KEY_PREFIX"
-		| "SESSION_TTL_SECONDS"
-		| "HANDLE_TTL_SECONDS"
-		| "PRIVATE_DATA_ENCRYPTION_KEY"
-	>,
+	settings: KvSettings,
 	factory: KeyValueStoreFactory = new RespKeyValueStoreFactory(),
 ): Promise<SessionRuntime> {
 	const encryptionKey = privateDataEncryptionKeyFromConfig(
 		settings.PRIVATE_DATA_ENCRYPTION_KEY,
 	);
-	const store = await factory.connect({
-		provider: settings.KV_PROVIDER,
-		url: settings.KV_URL,
-		username: settings.KV_USERNAME,
-		password: settings.KV_PASSWORD,
-		tls: settings.KV_TLS,
-	});
+	const store = await connectKv(settings, factory);
 
 	const sessionStore = new KvSessionStore(store, {
 		keyPrefix: settings.KV_KEY_PREFIX,
@@ -54,7 +64,73 @@ export async function createSessionRuntime(
 	return {
 		sessionStore,
 		privateDataBroker,
+		llmCache: createLlmCache(store, settings),
 		isReady: () => store.isReady(),
 		close: () => store.close(),
 	};
+}
+
+/**
+ * LLM exact-match cache on the shared Memorystore URL when sessions are off.
+ * Prefer {@link createSessionRuntime} so one RESP client owns both namespaces.
+ */
+export async function createLlmCacheRuntime(
+	settings: Pick<
+		Env,
+		| "LLM_CACHE_ENABLED"
+		| "LLM_CACHE_TTL_SECONDS"
+		| "KV_PROVIDER"
+		| "KV_URL"
+		| "KV_USERNAME"
+		| "KV_PASSWORD"
+		| "KV_TLS"
+		| "KV_KEY_PREFIX"
+	>,
+	factory: KeyValueStoreFactory = new RespKeyValueStoreFactory(),
+): Promise<LlmCacheRuntime> {
+	if (!settings.LLM_CACHE_ENABLED) {
+		return {
+			llmCache: new NoopLlmEphemeralCache(),
+			isReady: () => true,
+			close: async () => {},
+		};
+	}
+	const store = await connectKv(settings, factory);
+	return {
+		llmCache: createLlmCache(store, settings),
+		isReady: () => store.isReady(),
+		close: () => store.close(),
+	};
+}
+
+function createLlmCache(
+	store: KeyValueStore,
+	settings: Pick<
+		Env,
+		"LLM_CACHE_ENABLED" | "LLM_CACHE_TTL_SECONDS" | "KV_KEY_PREFIX"
+	>,
+): LlmEphemeralCache {
+	if (!settings.LLM_CACHE_ENABLED) {
+		return new NoopLlmEphemeralCache();
+	}
+	return new KvLlmCache(store, {
+		keyPrefix: settings.KV_KEY_PREFIX,
+		defaultTtlSeconds: settings.LLM_CACHE_TTL_SECONDS,
+	});
+}
+
+async function connectKv(
+	settings: Pick<
+		Env,
+		"KV_PROVIDER" | "KV_URL" | "KV_USERNAME" | "KV_PASSWORD" | "KV_TLS"
+	>,
+	factory: KeyValueStoreFactory,
+): Promise<KeyValueStore> {
+	return factory.connect({
+		provider: settings.KV_PROVIDER,
+		url: settings.KV_URL,
+		username: settings.KV_USERNAME,
+		password: settings.KV_PASSWORD,
+		tls: settings.KV_TLS,
+	});
 }

@@ -2,15 +2,29 @@
 project_id              = "factored-hackathon"
 region                  = "us-central1"
 name_prefix             = "bankai"
-backend_image           = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/backend@sha256:REPLACE"
-pipeline_image          = "REGION-docker.pkg.dev/PROJECT/REPOSITORY/pipeline@sha256:REPLACE"
-kg_artifact_bucket_name = "REPLACE-with-globally-unique-private-bucket"
+# Pin by digest only (never :latest in staging/prod). CI publishes:
+#   us-central1-docker.pkg.dev/PROJECT/bankai/backend@sha256:…
+#   us-central1-docker.pkg.dev/PROJECT/bankai/pipeline@sha256:…
+# See deploy/docs/image-digests.md and layer scripts/publish-image.sh.
+backend_image           = "us-central1-docker.pkg.dev/PROJECT/bankai/backend@sha256:REPLACE"
+pipeline_image          = "us-central1-docker.pkg.dev/PROJECT/bankai/pipeline@sha256:REPLACE"
+kg_artifact_bucket_name = "REPLACE-with-globally-unique-private-kg-bucket"
+upload_bucket_name      = "REPLACE-with-globally-unique-private-uploads-bucket"
 
+# Staging matrix: DEMO_AUTH on for current frontend; productive stores on via
+# runtime injection (FIRESTORE/GCS_UPLOAD/SESSION/KV_URL). Secrets stay out of Git.
 backend_environment = {
-  APP_ENV                   = "prod"
-  GCS_ENABLED               = "true"
+  APP_ENV                   = "staging"
+  DEMO_AUTH_ENABLED         = "true"
   GCS_GRAPH_TENANT_ID       = "demo-bankai"
   GCS_GRAPH_ARTIFACT_PREFIX = ""
+  REALTIME_ENABLED          = "true"
+  CORS_ALLOWED_ORIGINS      = "http://localhost:3001,https://REPLACE-frontend-origin"
+  CHAT_ENABLED              = "false"
+  AGENTIC_CHAT_ENABLED      = "false"
+  BASELINE_CHAT_ENABLED     = "false"
+  KG_RAG_LOCAL_ENABLED      = "false"
+  # SERVICE_TOKEN and PRIVATE_DATA_ENCRYPTION_KEY: Secret Manager / CI only.
 }
 
 # GCS_GRAPH_BUCKET is injected by the runtime module from kg_artifacts.
@@ -18,4 +32,6 @@ backend_environment = {
 # to them is opt-in and needs BIGQUERY_ENABLED=true; to enable it add to
 # backend_environment: BIGQUERY_EVAL_DATASET = "bankai_evaluation" and
 # BIGQUERY_EVAL_TABLE = "evaluation_results".
+# GCS_GRAPH_BUCKET, GCS_UPLOAD_BUCKET, FIRESTORE_ENABLED, GCS_ENABLED,
+# SESSION_STORE_ENABLED, KV_URL, KV_PROVIDER are injected by modules.
 pipeline_environment = {}

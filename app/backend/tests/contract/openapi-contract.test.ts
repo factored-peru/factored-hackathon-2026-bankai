@@ -140,6 +140,11 @@ describe("OpenAPI contract", () => {
 			"POST /v1/uploads",
 			"PUT /v1/demo/uploads/{attachmentId}",
 			"POST /v1/uploads/{attachmentId}/complete",
+			"GET /v1/admin/kg/current",
+			"GET /v1/admin/kg/versions",
+			"GET /v1/admin/kg/diff",
+			"POST /v1/admin/kg/promote",
+			"POST /v1/admin/kg/rollback",
 		];
 		const documented = Object.entries(spec.paths ?? {}).flatMap(
 			([path, item]) =>
