@@ -127,6 +127,8 @@ export abstract class ImmutableKnowledgeGraphArtifactRepository
 {
 	readonly kind = "knowledge_graph" as const;
 	private readonly snapshots = new Map<string, KnowledgeGraphSnapshot>();
+	private activeRunId: string | null = null;
+	private previousCatalogVersion: string | null = null;
 
 	constructor(private readonly allowedTenantId: string) {
 		super();
@@ -134,6 +136,11 @@ export abstract class ImmutableKnowledgeGraphArtifactRepository
 
 	/** Reads a relative, validated artifact object. Implementations own transport. */
 	protected abstract readObject(name: string): Promise<Uint8Array>;
+
+	/** Test/observability: catalog versions retained after current pointer load. */
+	cachedCatalogVersions(): ReadonlyArray<string> {
+		return [...this.snapshots.keys()].sort();
+	}
 
 	async load(input: {
 		session: SessionContext;
@@ -144,7 +151,7 @@ export abstract class ImmutableKnowledgeGraphArtifactRepository
 		}
 		try {
 			const snapshot = await this.readSnapshot(input.session);
-			this.snapshots.set(snapshot.catalog.version, snapshot);
+			this.retainSnapshots(snapshot);
 			return { status: "ready", catalog: snapshot.catalog };
 		} catch {
 			return { status: "unavailable", reasonCode: "kg_catalog_unavailable" };
@@ -162,6 +169,36 @@ export abstract class ImmutableKnowledgeGraphArtifactRepository
 			return null;
 		}
 		return this.snapshots.get(input.catalog.version) ?? null;
+	}
+
+	/**
+	 * After reading current.json, keep only the active catalog version plus at
+	 * most one previous snapshot for hot rollback while run_id changes.
+	 */
+	private retainSnapshots(snapshot: KnowledgeGraphSnapshot): void {
+		if (this.activeRunId !== null && this.activeRunId !== snapshot.runId) {
+			for (const [version, cached] of this.snapshots) {
+				if (cached.runId === this.activeRunId) {
+					this.previousCatalogVersion = version;
+					break;
+				}
+			}
+		}
+		this.snapshots.set(snapshot.catalog.version, snapshot);
+		const keep = new Set<string>([snapshot.catalog.version]);
+		if (
+			this.previousCatalogVersion !== null &&
+			this.previousCatalogVersion !== snapshot.catalog.version &&
+			this.snapshots.has(this.previousCatalogVersion)
+		) {
+			keep.add(this.previousCatalogVersion);
+		} else if (this.previousCatalogVersion === snapshot.catalog.version) {
+			this.previousCatalogVersion = null;
+		}
+		for (const key of [...this.snapshots.keys()]) {
+			if (!keep.has(key)) this.snapshots.delete(key);
+		}
+		this.activeRunId = snapshot.runId;
 	}
 
 	private async readSnapshot(

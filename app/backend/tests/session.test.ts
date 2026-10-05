@@ -28,6 +28,14 @@ class FakeKeyValueStore implements KeyValueStore {
 		return this.hashes.delete(key) || this.values.delete(key);
 	}
 
+	async get(key: string): Promise<string | null> {
+		return this.values.get(key) ?? null;
+	}
+
+	async set(key: string, value: string, _ttlSeconds: number): Promise<void> {
+		this.values.set(key, value);
+	}
+
 	async setIfAbsent(
 		key: string,
 		value: string,

@@ -6,8 +6,21 @@ monorepo. Los comandos se ejecutan desde `app/backend/`.
 ## Construir
 
 ```bash
-docker build -t base-bun-typescript-service .
+docker build -t bankai-backend:local .
+# o
+bash scripts/publish-image.sh --build-local
 ```
+
+## Publicar a Artifact Registry (digest)
+
+```bash
+export GCP_PROJECT_ID=… GCP_REGION=us-central1
+bash scripts/publish-image.sh --push
+# imprime: REGION-docker.pkg.dev/PROJECT/bankai/backend@sha256:…
+```
+
+Push y `terraform apply` requieren autorización explícita. CI:
+`.github/workflows/publish-images.yml`.
 
 ## Levantar con Compose
 

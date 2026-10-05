@@ -5,7 +5,11 @@ import type {
 	BaselineToolCall,
 } from "../../services/ports/baseline-chat.js";
 
-/** Vertex adapter for the explicit baseline only; it receives raw user text. */
+/**
+ * Vertex adapter for the explicit baseline only; it receives raw user text.
+ * Contents are ordered stable-prefix → user → (tool turns) so Gemini's
+ * implicit prompt cache can reuse the tokenized prefix across turns.
+ */
 export class VertexBaselineChatProvider implements BaselineChatModel {
 	constructor(
 		private readonly client: GoogleGenAI,
@@ -20,25 +24,16 @@ export class VertexBaselineChatProvider implements BaselineChatModel {
 			description: string;
 			parametersJsonSchema: Record<string, unknown>;
 		};
+		stablePrefix?: string;
 	}): Promise<BaselineModelTurn> {
 		const response = await this.client.models.generateContent({
 			model: this.model,
-			contents: input.user,
+			contents: contentsWithStablePrefix(input.stablePrefix, input.user),
 			config: {
 				systemInstruction: input.system,
 				temperature: 0.2,
 				maxOutputTokens: 1024,
-				tools: [
-					{
-						functionDeclarations: [
-							{
-								name: input.tool.name,
-								description: input.tool.description,
-								parametersJsonSchema: input.tool.parametersJsonSchema,
-							},
-						],
-					},
-				],
+				tools: [functionTool(input.tool)],
 			},
 		});
 		return toTurn(response);
@@ -65,10 +60,12 @@ export class VertexBaselineChatProvider implements BaselineChatModel {
 			durationMs: number | null;
 			reasonCode: string | null;
 		};
+		stablePrefix?: string;
 	}): Promise<BaselineModelTurn> {
 		const response = await this.client.models.generateContent({
 			model: this.model,
 			contents: [
+				...stablePrefixTurns(input.stablePrefix),
 				{ role: "user", parts: [{ text: input.user }] },
 				{
 					role: "model",
@@ -103,21 +100,47 @@ export class VertexBaselineChatProvider implements BaselineChatModel {
 				systemInstruction: input.system,
 				temperature: 0.2,
 				maxOutputTokens: 1024,
-				tools: [
-					{
-						functionDeclarations: [
-							{
-								name: input.tool.name,
-								description: input.tool.description,
-								parametersJsonSchema: input.tool.parametersJsonSchema,
-							},
-						],
-					},
-				],
+				tools: [functionTool(input.tool)],
 			},
 		});
 		return toTurn(response);
 	}
+}
+
+function functionTool(tool: {
+	name: string;
+	description: string;
+	parametersJsonSchema: Record<string, unknown>;
+}) {
+	return {
+		functionDeclarations: [
+			{
+				name: tool.name,
+				description: tool.description,
+				parametersJsonSchema: tool.parametersJsonSchema,
+			},
+		],
+	};
+}
+
+/** Stable catalog/graph marker first; variable user text last. */
+export function contentsWithStablePrefix(
+	stablePrefix: string | undefined,
+	user: string,
+): Array<{ role: string; parts: Array<{ text: string }> }> {
+	return [
+		...stablePrefixTurns(stablePrefix),
+		{ role: "user", parts: [{ text: user }] },
+	];
+}
+
+function stablePrefixTurns(
+	stablePrefix: string | undefined,
+): Array<{ role: string; parts: Array<{ text: string }> }> {
+	if (stablePrefix === undefined || stablePrefix.trim().length === 0) {
+		return [];
+	}
+	return [{ role: "user", parts: [{ text: stablePrefix }] }];
 }
 
 function toTurn(response: {

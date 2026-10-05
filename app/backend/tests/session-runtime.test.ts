@@ -19,6 +19,10 @@ class RuntimeStore implements KeyValueStore {
 	async delete(): Promise<boolean> {
 		return false;
 	}
+	async get(): Promise<string | null> {
+		return null;
+	}
+	async set(): Promise<void> {}
 	async setIfAbsent(): Promise<boolean> {
 		return true;
 	}

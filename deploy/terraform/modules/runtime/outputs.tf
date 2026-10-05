@@ -17,3 +17,8 @@ output "pipeline_job_name" {
 output "kg_artifact_bucket" {
   value = google_storage_bucket.kg_artifacts.name
 }
+
+output "effective_backend_environment_keys" {
+  description = "Non-secret env keys merged into Cloud Run (values may include hosts)."
+  value       = sort(keys(local.backend_env))
+}

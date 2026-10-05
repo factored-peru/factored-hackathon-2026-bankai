@@ -168,6 +168,23 @@ port = 9001
 		);
 	});
 
+	test("enabled LLM cache requires KV_URL", () => {
+		const settings = envSchema.parse({
+			APP_ENV: "dev",
+			LLM_CACHE_ENABLED: true,
+		});
+
+		expect(() => validateRuntimeConfiguration(settings)).toThrow(
+			"SVC-CORE-9017",
+		);
+	});
+
+	test("LLM cache defaults stay off", () => {
+		const settings = envSchema.parse({});
+		expect(settings.LLM_CACHE_ENABLED).toBe(false);
+		expect(settings.LLM_CACHE_TTL_SECONDS).toBe(600);
+	});
+
 	test.each(["valkey", "redis"] as const)(
 		"accepts the %s key-value provider",
 		(provider) => {

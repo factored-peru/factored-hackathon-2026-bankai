@@ -96,9 +96,16 @@ bun run dev
 
 El perfil versionado `dev` escucha en `http://localhost:3000`, habilita CORS
 con credenciales únicamente para `http://localhost:3001` y
-`http://127.0.0.1:3001`, y usa la cookie local `bankai-demo-session`. No lee
-BigQuery, Firebase, Firestore, GCS, Valkey ni secretos. Todo estado se pierde al
-detener el proceso.
+`http://127.0.0.1:3001`, y usa la cookie local `bankai-demo-session`. Por
+defecto no lee BigQuery, Firebase, Firestore, GCS ni Valkey: el estado vive en
+memoria y se pierde al detener el proceso.
+
+Para ejercitar stores productivos (sin `terraform apply`): habilita
+`FIRESTORE_ENABLED` + `GCS_ENABLED` + `GCS_UPLOAD_BUCKET` (conversaciones,
+adjuntos, `user_profiles`, bindings) y/o `SESSION_STORE_ENABLED` + `KV_URL` +
+`PRIVATE_DATA_ENCRYPTION_KEY` (sesiones Valkey). Cache exact-match de respuestas
+LLM: `LLM_CACHE_ENABLED` + `KV_URL` (mismo Memorystore, namespace `llm:`). Esquema:
+[`docs/firestore-collections.md`](docs/firestore-collections.md).
 
 | Recurso           | URL                     | Uso demo                                       |
 | ----------------- | ----------------------- | ---------------------------------------------- |

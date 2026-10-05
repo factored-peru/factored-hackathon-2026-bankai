@@ -7,10 +7,16 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
 - `bucket.ts`: placeholder para GCS con artefactos de grafo versionados.
 - `cache.ts`: facade local para coordinación efímera.
 - `kv/`: contrato y adaptador RESP `node-redis` para Memorystore for Valkey.
+  `KvLlmCache` implementa `LlmEphemeralCache` en el namespace `llm:resp:v1:` del
+  mismo cliente (flag `LLM_CACHE_ENABLED`); no guarda prompts crudos ni evidencia.
 - `bigquery/`: ejecutor ADC para planes Structured RAG catalogados; aplica
   tenant server-side, parámetros nombrados, límite de bytes, timeout y filas.
-- `firestore/`: snapshots conversacionales saneados con revisión optimista;
-  requiere Firestore y no se activa en memoria de producción.
+- `firestore/`: snapshots conversacionales saneados con revisión optimista,
+  `user_profiles` y bindings de identidad; requiere Firestore. Colecciones:
+  [`docs/firestore-collections.md`](../docs/firestore-collections.md).
+- `cache/lru-memo.ts`: LRU de proceso (equivalente a `functools.lru_cache`)
+  sólo en adapters (`CachingSessionStore`, conversation get, identity, cohort
+  BigQuery demo). No sustituye Valkey ni se usa en el control plane.
 - `gcs/`: carga privada de adjuntos por URL firmada; nunca transporta binarios
   por WebSocket ni los entrega a un modelo en el MVP.
 - `memory/`: dobles volátiles para pruebas, nunca persistencia de producción.
@@ -28,9 +34,9 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
 - `catalog/`: `FileQueryCatalogSource` lee el catálogo JSON de una ruta fijada
   por configuración; la validación vive en `services/data`.
 - `identity/`: resuelve la sesión al `customer_id` bancario.
-  `StaticCustomerIdentityResolver` es un mapa fijo para demos y pruebas; los
-  vínculos los entrega quien lo construye y no se versionan. Un adaptador
-  durable (Firestore) lo sustituirá detrás del mismo puerto.
+  `StaticCustomerIdentityResolver` es un mapa fijo para demos y pruebas.
+  `FirestoreCustomerIdentityResolver` + `user_profiles` /
+  `UserProfileBackedActorDirectory` cubren el camino durable.
 - `providers/typesafe-entry-chooser.ts`: el JEV de TypeSafe por HTTP
   (`POST /v1/systemone`, una pregunta `choice` sobre las entradas del catálogo
   más `none_of_the_above`). Confianza por debajo de `JEV_MIN_CONFIDENCE` o ausente
