@@ -10,6 +10,8 @@
   control plane.
 - `task-implementation-audit-20261004.md`: auditoría de implementación P0
   (Ricardo) frente a ADR y código local.
+- `task-status-gcp-20261005.md`: contraste operativo de las tareas P0 de
+  Ricardo, Alexandra y All contra Git y los recursos GCP visibles.
 - `task-delivery-phases-p0.md`: plan operativo no normativo de cierre P0
   por fases para Ricardo/All.
 - `product/`: brief de Dispute Transaction Support y matriz de capacidades
