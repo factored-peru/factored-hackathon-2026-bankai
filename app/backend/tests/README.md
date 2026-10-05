@@ -8,6 +8,14 @@ Pruebas con `bun test`.
   el saneador y el adaptador OTel. Verifican, con el golden set real y un
   exportador en memoria, que ni spans, métricas ni registros BigQuery llevan
   contenido, `trace_id` crudo ni IDs de alta cardinalidad.
+- `tests/baseline-run-evaluation-observer.test.ts`: la telemetría en vivo del
+  chat baseline con el `BaselineConversationRunner` real, un modelo simulado y
+  exportador y tabla en memoria. Verifica el span y las filas de un turno, que
+  sólo se juzgan métricas `baseline_*`, que nada contiene texto ni `trace_id`
+  crudo y que la respuesta es idéntica con Langfuse y BigQuery caídos.
+- `tests/chat-try.test.ts`: el cliente `chat:try` contra un servidor real en
+  proceso, por un WebSocket verdadero (turno completo, mismo hilo, origen
+  rechazado, actor desconocido) y la guarda de URLs remotas.
 - `tests/evaluation-emission.test.ts`: `eval:run -- --emit` con exportador y
   sumidero en memoria y el comando real en un proceso hijo. Verifica un span por
   fixture y una fila por resultado con el mismo correlador, que un exportador o

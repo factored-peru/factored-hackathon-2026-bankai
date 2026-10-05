@@ -94,7 +94,9 @@ decisión de negocio.
   `OTEL_EXPORTER_OTLP_*` del entorno, porque el exportador las mezclaría en
   cada petición. Por defecto todo está apagado, no se crea ningún proveedor y no
   hay red; no se usa Docker self-host en P0. Las claves van por secret manager o
-  `.env` local, nunca en Git.
+  `.env` local, nunca en Git. El servidor sólo usa esta telemetría con
+  `CHAT_PIPELINE=baseline`: cada turno emite un span y filas de evaluación (ver
+  ADR 0012); con otro pipeline no se crea nada aunque `OTEL_ENABLED` esté activo.
 
 LangSmith, DeepEval, Promptfoo y DeepAgents no son dependencias ni destinos de
 telemetría P0: `../../docs/planning/evals.md` establece OTel + BigQuery y

@@ -6,6 +6,15 @@ import { withLruCache } from "../cache/lru-memo.js";
 type CustomerRow = { customer_id?: unknown };
 
 /**
+ * Cost guard of the cohort query. The query scanned ~82 MB and was rejected by
+ * the previous 50 MB cap (`bytesBilledLimitExceeded`), which left the baseline
+ * chat unable to list or resolve any actor. 200 MB leaves room for the tables
+ * to grow, and the cohort is cached for a minute, so it still costs a fraction
+ * of a cent.
+ */
+export const DEMO_COHORT_MAX_BYTES_BILLED = "200000000";
+
+/**
  * Closed demo cohort query. It only returns customer identifiers inside the
  * backend, then converts them to opaque HMAC aliases before the HTTP boundary.
  * Cohort rows are LRU-cached briefly to avoid re-querying BigQuery per list/resolve.
@@ -104,7 +113,7 @@ FROM (
 )`.trim();
 		const [rows] = await this.bigquery.query({
 			query,
-			maximumBytesBilled: "50000000",
+			maximumBytesBilled: DEMO_COHORT_MAX_BYTES_BILLED,
 			useLegacySql: false,
 			labels: { component: "demo_directory" },
 		});

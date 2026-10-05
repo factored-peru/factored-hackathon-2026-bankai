@@ -40,6 +40,30 @@ export function evaluationSpanAttributes(
 		"eval.catalog_version": context.catalogVersion ?? "none",
 		"eval.matrix_version": matrixVersion,
 	};
+	// Facts of a live run. A golden fixture carries none of them, so its span is
+	// unchanged. Only counts, a duration and a closed error code: never content.
+	if (context.pipeline !== undefined) {
+		attributes["bankai.pipeline"] = context.pipeline;
+	}
+	if (context.durationMs !== undefined) {
+		attributes["bankai.latency_ms"] = Math.round(context.durationMs);
+	}
+	if (context.modelCallCount !== undefined) {
+		attributes["bankai.model_calls"] = context.modelCallCount;
+	}
+	if (context.retrievalAttemptCount !== undefined) {
+		attributes["bankai.retrieval_attempts"] = context.retrievalAttemptCount;
+	}
+	if (context.retrievalSuccessCount !== undefined) {
+		attributes["bankai.retrieval_successes"] = context.retrievalSuccessCount;
+	}
+	if (context.errorCode !== undefined) {
+		attributes["bankai.outcome"] =
+			context.errorCode === null ? "completed" : "failed";
+		if (context.errorCode !== null) {
+			attributes["bankai.error_code"] = context.errorCode;
+		}
+	}
 	for (const result of report.results) {
 		attributes[`eval.${result.metric}.score`] = result.score;
 		attributes[`eval.${result.metric}.label`] = result.label;
@@ -56,6 +80,7 @@ export function evaluationMetricAttributes(
 ): TelemetryAttributes {
 	return validateMetricAttributes({
 		"bankai.route": context.route,
+		"bankai.pipeline": context.pipeline,
 		"eval.metric": result.metric,
 		"eval.label": result.label,
 		"eval.evaluator": result.evaluator,

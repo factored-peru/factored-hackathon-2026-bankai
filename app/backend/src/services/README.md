@@ -34,6 +34,14 @@ métrica y registros BigQuery y los valida contra el contrato cerrado de
 `trace_id` crudo. `EvaluationRunner` acepta un `EvaluationTelemetry` opcional
 (`ports/evaluation-telemetry.ts`); su fallo nunca altera una evaluación.
 
+`evaluation/baseline-run-evaluation-observer.ts` implementa `BaselineRunObserver`:
+convierte la medición sin contenido de cada turno del chat baseline en un span y
+en filas de evaluación, evaluando sólo con `BaselineChatEvaluator` (los
+evaluadores compartidos juzgarían compuertas que el baseline no invoca). Espera
+la entrega con un tope de 2 s y nunca lanza: un fallo se cuenta en
+`failedDeliveries`, se notifica a `onFailure` con un código cerrado
+(`LiveDeliveryFailure`, nunca un mensaje del proveedor) y no altera la respuesta.
+
 `ports/evaluation-result-sink.ts` define `EvaluationResultSink`, el destino
 durable de los resultados de evaluación saneados. Devuelve un resultado con
 códigos cerrados de fallo y nunca lanza: persistir mal no altera una evaluación.

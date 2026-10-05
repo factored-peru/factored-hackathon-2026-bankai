@@ -100,6 +100,17 @@ si no hay ningún canal configurado; el fallo no altera los resultados de la
 evaluación, que siguen siendo informativos. La salida es una línea JSON sin
 contenido ni claves.
 
+Las corridas reales del baseline usan el mismo registro `v1`: un observador
+(`BaselineRunObserver`) convierte la medición de cada turno en un contexto con
+`fixture_id=live-baseline`, `matrix_version=live-baseline-v1` y
+`policy_version=baseline-v1`, y sólo lo evalúa `BaselineChatEvaluator`, de modo
+que las filas llevan `evaluator=baseline_chat` y métricas `baseline_*`. No hay
+columna `pipeline`: el filtro es por `evaluator` o `matrix_version`. La latencia
+y los contadores de la corrida viajan en el span, no en la fila; llevarlos a
+BigQuery exige un esquema nuevo (`schemaVersion` v2 con columnas nulables).
+Cada turno usa un `run_id` propio, porque `fixture_id` es constante y de otro
+modo las claves de idempotencia colisionarían.
+
 El comparador `baseline` se evalúa como trayectoria `llm` separada. No se le
 aplican los criterios de aprobación del control plane: su evaluador determina
 que las compuertas fueron omitidas, que la llamada terminó y que se registró

@@ -10,6 +10,7 @@
 		"dev": "bun --watch src/index.ts",
 		"env:prune-empty": "bun scripts/prune-empty-env.ts",
 		"eval:run": "bun scripts/evaluate-goldens.ts",
+		"chat:try": "bun scripts/chat-try.ts",
 		"format": "biome format --write .",
 		"agent:matrix": "bun scripts/agent-matrix.ts",
 		"model-armor:smoke": "bun scripts/model-armor-smoke.ts",

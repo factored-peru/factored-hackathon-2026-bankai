@@ -88,7 +88,32 @@ registrarlos.
 El correlador de cada traza es un HMAC de su `trace_id` con una clave de
 entorno; nunca el `trace_id` de entrada. Es el mismo valor en el span de
 Langfuse y en la fila BigQuery, y rotar la clave corta la correlación histórica
-a propósito.
+a propósito. Todos los turnos de una conexión WebSocket comparten `trace_id`
+(es el identificador de la petición de apertura), de modo que el correlador
+agrupa una conexión, no un turno; cada turno se distingue por su `run_id` en
+BigQuery.
+
+Las corridas reales del chat baseline (`CHAT_PIPELINE=baseline`) se registran
+con la misma frontera. Un observador convierte la medición sin contenido de cada
+turno en un span `evaluation` y en filas versionadas: `bankai.pipeline`,
+latencia, llamadas al modelo, intentos y éxitos de recuperación, un resultado y
+un código de error cerrado se añaden a la lista de atributos. Sólo se evalúan
+las métricas `baseline_*`: los evaluadores compartidos juzgan compuertas
+(guardrail, policy, aislamiento de tenant) que el baseline no invoca, y
+ejecutarlos informaría como superado algo que no ocurrió. Las filas se
+distinguen por `evaluator=baseline_chat`, `matrix_version=live-baseline-v1` y
+`fixture_id=live-baseline`.
+
+Entrega en el MVP y en producción. En el MVP cada turno espera el envío de su
+span y de sus filas, con un tope de 2 s, antes de cerrar: Cloud Run sólo asigna
+CPU mientras una petición está abierta, así que un envío por temporizador puede
+retrasarse o perderse. Es simple y fiable, a costa de unos cientos de
+milisegundos por turno, y un fallo o un backend lento se cuenta
+(`failedDeliveries`) sin afectar nunca a la respuesta. En producción el envío se
+desacopla del turno, con CPU siempre asignada o un colector de OpenTelemetry
+como sidecar que absorba la cola y reintente, junto con la tasa de muestreo y el
+presupuesto de unidades por entorno que este ADR ya exige antes de activar
+tráfico real.
 
 La traza permitida preserva el orden causal, no el contenido:
 

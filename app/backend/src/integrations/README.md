@@ -45,6 +45,11 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
   `BIGQUERY_EVAL_DATASET` vacío devuelve `null` y no abre conexión; el cliente se
   autentica con ADC en el primer insert. `memory/in-memory-evaluation-result-sink.ts`
   es el doble para pruebas.
+- `observability/live-baseline-observer-runtime.ts`: fábrica del observador del
+  chat baseline. Devuelve `null` salvo que `CHAT_PIPELINE=baseline` y esté
+  activo Langfuse (`OTEL_ENABLED`) o BigQuery (`BIGQUERY_EVAL_DATASET`); si no,
+  no crea nada. `server.ts` se lo entrega al `BaselineConversationRunner` y
+  llama a su `shutdown` en `onClose`.
 - `observability/otel-telemetry-runtime.ts`: única fábrica de la ruta de
   telemetría. Con `OTEL_ENABLED=false` devuelve `null` y no crea nada. Activa,
   compone un `TracerProvider` aislado (nunca global, sin autoinstrumentación ni

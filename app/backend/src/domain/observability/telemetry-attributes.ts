@@ -53,6 +53,14 @@ export const telemetryRouteSchema = z.enum([
 	"ood",
 ]);
 export const telemetryLabelSchema = z.enum(["pass", "fail", "skipped"]);
+/** Which conversation pipeline produced a live run; the baseline is ungated. */
+export const telemetryPipelineSchema = z.enum(["baseline", "controlled"]);
+/** Small non-negative counts (model calls, retrieval attempts). */
+export const telemetryCounterSchema = z
+	.number()
+	.int()
+	.nonnegative()
+	.max(10_000);
 export const telemetryGuardrailStatusSchema = z.enum([
 	"NO_MATCH_FOUND",
 	"MATCH_FOUND",
@@ -83,6 +91,12 @@ const spanAttributeSchema = z
 		"bankai.tool_id": telemetryIdentifierSchema,
 		"bankai.guardrail_status": telemetryGuardrailStatusSchema,
 		"bankai.latency_ms": z.number().nonnegative().finite(),
+		// Facts of one live run (ADR 0012): counters and a closed error code.
+		"bankai.pipeline": telemetryPipelineSchema,
+		"bankai.model_calls": telemetryCounterSchema,
+		"bankai.retrieval_attempts": telemetryCounterSchema,
+		"bankai.retrieval_successes": telemetryCounterSchema,
+		"bankai.error_code": telemetryCodeSchema,
 		"bankai.session_hash": telemetryPseudonymSchema,
 		"bankai.tenant_hash": telemetryPseudonymSchema,
 		"eval.fixture_id": telemetryIdentifierSchema,
@@ -100,6 +114,7 @@ const metricAttributeSchema = z
 		"bankai.span": telemetrySpanNameSchema,
 		"bankai.outcome": telemetryCodeSchema,
 		"bankai.route": telemetryRouteSchema,
+		"bankai.pipeline": telemetryPipelineSchema,
 		"bankai.risk_level": riskLevelSchema,
 		"bankai.guardrail_status": telemetryGuardrailStatusSchema,
 		"eval.metric": evaluationMetricSchema,
