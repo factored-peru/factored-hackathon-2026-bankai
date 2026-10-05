@@ -49,6 +49,14 @@ decisión de negocio.
   Memorystore for Valkey. La conexión gestionada usa TLS, IAM y red privada.
 - `FIRESTORE_*`, `BIGQUERY_*`, `GCS_*` y `GOOGLE_*`: estado durable,
   Structured RAG, KG-RAG y recursos Google Cloud mediante ADC/IAM.
+- `GCS_GRAPH_BUCKET`, `GCS_GRAPH_TENANT_ID` y `GCS_GRAPH_ARTIFACT_PREFIX`:
+  adaptador productivo que lee el mismo paquete inmutable que publica el
+  pipeline (`{prefix}{tenant}/current.json` + artefactos versionados). En
+  `prod`, un bucket configurado exige `GCS_ENABLED=true` y prohíbe
+  `KG_RAG_LOCAL_ENABLED`. El prefijo default es vacío (alineado al CLI
+  publish). Terraform inyecta `GCS_GRAPH_BUCKET` desde el bucket
+  `kg_artifacts`. El runtime se decora en el servidor para
+  `createRagStateGraph` / evals; no cablea automáticamente el chat baseline.
 - `KG_RAG_LOCAL_*`: adaptador de desarrollo para el paquete local publicado
   por el pipeline. Requiere `KG_RAG_LOCAL_ENABLED=true`, conserva
   `.local/kg-rag` como ruta por defecto y sólo acepta `demo-bankai`; el

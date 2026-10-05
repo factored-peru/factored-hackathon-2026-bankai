@@ -10,13 +10,16 @@ from bankai_pipeline.kdd import (
     KddConfig,
     build_item_matrix,
     compare_rule_sets,
+    consensus_rules,
     deduplicate_redundant_rules,
     drop_han_redundant_rules,
     dry_run_plan,
+    evaluate_rules_on_matrix,
     mine_frequent_itemsets,
     mine_rules,
     population_definitions,
     refine_mined_rules,
+    temporal_train_holdout_split,
 )
 
 
@@ -208,6 +211,67 @@ class KddTest(unittest.TestCase):
         self.assertEqual(comparison["comparison"], "apriori_fpgrowth_eclat")
         self.assertEqual(comparison["triple_jaccard"], 1.0)
 
+    def test_temporal_holdout_split_and_rule_stability(self) -> None:
+        import polars as pl
+
+        definition = population_definitions()[0]
+        frame = pl.DataFrame(
+            {
+                "transaction_id": [f"t{i}" for i in range(10)],
+                "transaction_date": [
+                    datetime(2023, 1, 15, tzinfo=timezone.utc),
+                    datetime(2023, 2, 15, tzinfo=timezone.utc),
+                    datetime(2023, 3, 15, tzinfo=timezone.utc),
+                    datetime(2023, 4, 15, tzinfo=timezone.utc),
+                    datetime(2023, 5, 15, tzinfo=timezone.utc),
+                    datetime(2023, 6, 15, tzinfo=timezone.utc),
+                    datetime(2023, 7, 15, tzinfo=timezone.utc),
+                    datetime(2023, 8, 15, tzinfo=timezone.utc),
+                    datetime(2023, 11, 15, tzinfo=timezone.utc),
+                    datetime(2023, 12, 15, tzinfo=timezone.utc),
+                ],
+                "transaction_status": ["DECLINED"] * 6 + ["APPROVED"] * 4,
+                "transaction_type": ["PURCHASE"] * 10,
+                "transaction_category": ["CARD"] * 10,
+                "channel": ["ONLINE"] * 6 + ["BRANCH"] * 4,
+                "merchant_category": ["RETAIL"] * 10,
+                "currency": ["PEN"] * 10,
+                "response_code": [51] * 6 + [0] * 4,
+                "is_fraud": [True] * 6 + [False] * 4,
+                "amount": [20.0] * 10,
+                "fraud_score": [0.9] * 6 + [0.1] * 4,
+            }
+        )
+        train, holdout, meta = temporal_train_holdout_split(
+            frame,
+            "transaction_date",
+            datetime(2023, 1, 1, tzinfo=timezone.utc),
+            datetime(2024, 1, 1, tzinfo=timezone.utc),
+            0.20,
+        )
+        self.assertGreater(train.height, 0)
+        self.assertGreater(holdout.height, 0)
+        self.assertEqual(meta["train_rows"] + meta["holdout_rows"], frame.height)
+
+        settings = config()
+        train_matrix, _ = build_item_matrix(train, definition, settings)
+        holdout_matrix, _ = build_item_matrix(holdout, definition, settings)
+        holdout_matrix = holdout_matrix.reindex(columns=train_matrix.columns, fill_value=False)
+        apriori = mine_rules(train_matrix, definition.target_column, "apriori", settings)
+        fpgrowth = mine_rules(train_matrix, definition.target_column, "fpgrowth", settings)
+        eclat_rules = mine_rules(train_matrix, definition.target_column, "eclat", settings)
+        consensus = consensus_rules(
+            {"apriori": apriori, "fpgrowth": fpgrowth, "eclat": eclat_rules}
+        )
+        evaluation = evaluate_rules_on_matrix(
+            consensus,
+            holdout_matrix,
+            min_lift=settings.min_lift,
+            max_confidence_delta=0.5,
+        )
+        self.assertEqual(evaluation["rule_count"], len(consensus))
+        self.assertIn("stable_fraction", evaluation)
+
     def test_dry_run_plan_has_no_graph_stage(self) -> None:
         plan = dry_run_plan(config())
 
@@ -218,4 +282,6 @@ class KddTest(unittest.TestCase):
         complaints = plan["populations"][1]
         self.assertEqual(complaints["row_filter_sql"], "`category` = 'Transactions'")
         self.assertIn("resolution_days", complaints["leakage_excluded"])
+        self.assertEqual(plan["validation"]["enabled"], True)
+        self.assertEqual(plan["validation"]["holdout_fraction"], 0.2)
         self.assertEqual(plan["graph_compilation"], "not_requested")

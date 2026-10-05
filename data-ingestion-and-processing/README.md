@@ -77,12 +77,15 @@ bankai-pipeline --stage kdd --run-id kdd-local-20261003 --kdd-config /ruta/kdd.t
 
 La implementación compara Apriori, FP-Growth y Eclat (consenso del grafo) más
 AprioriHybrid (paridad con Apriori) sobre transacciones y reclamos por
-separado. Su propuesta, límites y artefactos se documentan en
-`docs/kdd-dispute-transaction-support.md`. La etapa local `compile-graph`
-materializa sólo las reglas coincidentes entre los tres consensuadores y la
-ontología agregada `Population`, `Feature`, `FeatureValue`, `Target`, `Rule`,
-`Case` y `ModelRun`; no crea entidades individuales de cliente, cuenta,
-comercio o disputa.
+separado. Con `[kdd.validation]` (default ON) parte la ventana temporal en
+train/holdout sobre la población completa (`max_rows` ≥ tamaño en ventana),
+mina en train y recalcula métricas en holdout; escribe
+`artifacts/kdd/<run-id>/validation/`. Su propuesta, límites y artefactos se
+documentan en `docs/kdd-dispute-transaction-support.md`. La etapa local
+`compile-graph` materializa sólo las reglas coincidentes entre los tres
+consensuadores y la ontología agregada `Population`, `Feature`, `FeatureValue`,
+`Target`, `Rule`, `Case` y `ModelRun`; no crea entidades individuales de
+cliente, cuenta, comercio o disputa.
 
 ```bash
 bankai-pipeline --stage compile-graph --run-id graph-local-20261003 \
@@ -94,22 +97,37 @@ bajo `artifacts/graph/<run-id>/`. Para adjuntar provenance agregado de C1–C5,
 añade `--supervised-suite-artifact-dir` y las cinco opciones
 `--cN-artifact-dir`; sus checksums deben coincidir con el suite manifest.
 
-## Publicación local para KG-RAG
+## Publicación KG-RAG (local o GCS)
 
-`publish` emula localmente el paquete inmutable y su `current.json` para
-`demo-bankai`; no usa AWS, GCS, BigQuery ni Cloud Tasks.
+`publish --publish-backend local` emula el paquete inmutable y su `current.json`
+para `demo-bankai` sin cloud.
 
 ```bash
 bankai-pipeline --stage publish --run-id graph-local-20261003 \
+  --publish-backend local \
   --graph-artifact-dir artifacts/graph/graph-local-20261003 \
   --local-target ../app/backend/.local/kg-rag --dry-run
 bankai-pipeline --stage publish --run-id graph-local-20261003 \
+  --publish-backend local \
   --graph-artifact-dir artifacts/graph/graph-local-20261003 \
   --local-target ../app/backend/.local/kg-rag
 ```
 
+`publish --publish-backend gcs` usa el mismo contrato de manifiesto/checksum y
+exige un lease Firestore (`pipeline_leases/{tenant}`) antes de escribir
+`current.json`. Dry-run valida y lista URIs; la ejecución real requiere ADC,
+bucket existente e IAM (SA pipeline con objectAdmin + datastore.user). No
+ejecutar sin autorización explícita.
+
+```bash
+bankai-pipeline --stage publish --run-id graph-local-20261003 \
+  --publish-backend gcs \
+  --graph-artifact-dir artifacts/graph/graph-local-20261003 \
+  --gcs-bucket <kg-artifacts-bucket> \
+  --kg-tenant-id demo-bankai --dry-run
+```
+
 El paquete contiene el grafo, manifiesto, catálogo de operaciones y hashes.
-La publicación GCS y el lease Firestore siguen pendientes según ADR 0020.
 
 ## Piloto C1: incumplimiento de SLA
 
@@ -162,6 +180,28 @@ bankai-pipeline --stage train-satisfaction-ordinal --run-id c5-local-20261003 --
 
 `evaluate-supervised-suite` consolida hashes, versiones y bloqueos de C6–C8
 desde los cinco manifiestos; no lee BigQuery ni publica resultados.
+
+## Informe de interpretabilidad
+
+`report-metrics` lee artefactos KDD + C1–C5 + suite (+ grafo opcional) y
+escribe un reporte saneado con métricas asociativas derivadas (incl. conviction
+y leverage) separadas de las métricas supervisadas. No consulta BigQuery.
+
+```bash
+bankai-pipeline --stage report-metrics --run-id metrics-local-20261004 \
+  --kdd-artifact-dir artifacts/kdd/KDD_RUN_ID \
+  --supervised-suite-artifact-dir artifacts/supervised-suite/SUITE_RUN_ID \
+  --c1-artifact-dir artifacts/c1/C1_RUN_ID \
+  --c2-artifact-dir artifacts/c2/C2_RUN_ID \
+  --c3-artifact-dir artifacts/c3/C3_RUN_ID \
+  --c4-artifact-dir artifacts/c4/C4_RUN_ID \
+  --c5-artifact-dir artifacts/c5/C5_RUN_ID \
+  --graph-artifact-dir artifacts/graph/GRAPH_RUN_ID \
+  --dry-run
+```
+
+Sin `--dry-run` escribe `interpretability-report.json` y `.md` bajo
+`artifacts/reports/<run-id>/`.
 
 El cierre automatizado descrito en ADR 0020 invocará el job desde GCP, no desde
 una estación local. Como referencia de operación controlada, un job ya creado

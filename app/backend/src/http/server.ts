@@ -11,6 +11,10 @@ import { createStructuredQueryRuntime } from "../integrations/bigquery/structure
 import { LocalBucket, type ObjectBucket } from "../integrations/bucket.js";
 import { type Cache, LocalCache } from "../integrations/cache.js";
 import { type Database, LocalDatabase } from "../integrations/database.js";
+import {
+	createKnowledgeGraphRuntime,
+	type KnowledgeGraphRuntime,
+} from "../integrations/kg/gcs-knowledge-graph-artifact-repository.js";
 import { InMemoryDemoActorDirectory } from "../integrations/memory/demo-actor-directory.js";
 import { InMemoryAttachmentStore } from "../integrations/memory/in-memory-attachment-store.js";
 import {
@@ -43,6 +47,13 @@ import {
 	registerRoutes,
 } from "./routes.js";
 
+declare module "fastify" {
+	interface FastifyInstance {
+		/** Local or GCS KG runtime for createRagStateGraph / evals; null when unset. */
+		knowledgeGraphRuntime: KnowledgeGraphRuntime | null;
+	}
+}
+
 export type AppIntegrations = Readonly<{
 	database: Database;
 	bucket: ObjectBucket;
@@ -65,6 +76,7 @@ type DemoRuntime = Readonly<{
 export async function buildServer(options: BuildServerOptions = {}) {
 	const runtimeEnv = options.env ?? env;
 	validateRuntimeConfiguration(runtimeEnv);
+	const knowledgeGraphRuntime = createKnowledgeGraphRuntime(runtimeEnv);
 	const integrations = options.integrations ?? {
 		database: new LocalDatabase(),
 		bucket: new LocalBucket(),
@@ -82,6 +94,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
 			level: runtimeEnv.LOG_LEVEL,
 		},
 	});
+	app.decorate("knowledgeGraphRuntime", knowledgeGraphRuntime);
 	app.addContentTypeParser(
 		"application/octet-stream",
 		{ parseAs: "buffer" },

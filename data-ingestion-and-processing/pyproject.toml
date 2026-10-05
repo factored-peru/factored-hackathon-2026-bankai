@@ -8,6 +8,7 @@ dependencies = [
   "google-cloud-bigquery-storage",
   "db-dtypes",
   "google-cloud-storage",
+  "google-cloud-firestore",
   "mlxtend",
   "msgpack",
   "networkx",

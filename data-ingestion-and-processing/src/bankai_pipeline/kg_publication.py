@@ -1,8 +1,7 @@
-"""Local-only publication contract for a validated KG artifact.
+"""Immutable KG publication contract shared by local and GCS adapters.
 
-This module intentionally has no cloud SDK dependency.  The production GCS
-publisher remains a separate ADR 0020 concern; this adapter emulates its
-immutable-version plus ``current.json`` protocol for backend development.
+Local and GCS publishers share the same package validation, catalog and
+``current.json`` pointer shape that KG-RAG consumes (ADR 0020 / ADR 0011).
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ import json
 import shutil
 import tempfile
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 import msgpack
@@ -27,11 +27,24 @@ CATALOG_SCHEMA_VERSION = "bankai-kg-operation-catalog-v1"
 DEMO_TENANT_ID = "demo-bankai"
 
 
-def publish_local_graph(source_dir: Path, local_target: Path, tenant_id: str = DEMO_TENANT_ID) -> dict[str, object]:
-    """Atomically publish a local immutable graph package and its pointer."""
+@dataclass(frozen=True)
+class PreparedPublication:
+    """Validated immutable package ready for a destination adapter."""
 
-    if tenant_id != DEMO_TENANT_ID:
-        raise GraphInputError("local KG publication only supports demo-bankai")
+    tenant_id: str
+    run_id: str
+    graph_bytes: bytes
+    manifest: Mapping[str, object]
+    manifest_bytes: bytes
+    catalog: Mapping[str, object]
+    catalog_bytes: bytes
+    pointer: Mapping[str, object]
+    pointer_bytes: bytes
+
+
+def prepare_publication(source_dir: Path, tenant_id: str = DEMO_TENANT_ID) -> PreparedPublication:
+    """Validate source artifacts and build catalog + pointer without writing."""
+
     source = source_dir.resolve()
     manifest_path = source / MANIFEST_FILENAME
     graph_path = source / GRAPH_FILENAME
@@ -46,25 +59,8 @@ def publish_local_graph(source_dir: Path, local_target: Path, tenant_id: str = D
         raise GraphInputError("graph manifest checksum mismatch")
     graph = _decode_graph(graph_bytes)
     catalog = _build_catalog(graph, manifest)
-
-    tenant_root = local_target.resolve() / tenant_id
-    version_dir = tenant_root / run_id
-    tenant_root.mkdir(parents=True, exist_ok=True)
-    if version_dir.exists():
-        existing = version_dir / MANIFEST_FILENAME
-        if not existing.is_file() or _sha256(_read_bytes(existing)) != _sha256(_read_bytes(manifest_path)):
-            raise GraphInputError("local graph version already exists with different content")
-    else:
-        staging = Path(tempfile.mkdtemp(prefix=f".{run_id}-", dir=tenant_root))
-        try:
-            shutil.copy2(graph_path, staging / GRAPH_FILENAME)
-            shutil.copy2(manifest_path, staging / MANIFEST_FILENAME)
-            _atomic_json(staging / CATALOG_FILENAME, catalog)
-            staging.replace(version_dir)
-        except Exception:
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
-
+    catalog_bytes = _json_bytes(catalog)
+    manifest_bytes = _read_bytes(manifest_path)
     pointer = {
         "schema_version": PUBLICATION_SCHEMA_VERSION,
         "tenant_id": tenant_id,
@@ -72,36 +68,85 @@ def publish_local_graph(source_dir: Path, local_target: Path, tenant_id: str = D
         "catalog_version": catalog["version"],
         "artifact_dir": run_id,
         "files": {
-            GRAPH_FILENAME: _sha256(_read_bytes(version_dir / GRAPH_FILENAME)),
-            MANIFEST_FILENAME: _sha256(_read_bytes(version_dir / MANIFEST_FILENAME)),
-            CATALOG_FILENAME: _sha256(_read_bytes(version_dir / CATALOG_FILENAME)),
+            GRAPH_FILENAME: _sha256(graph_bytes),
+            MANIFEST_FILENAME: _sha256(manifest_bytes),
+            CATALOG_FILENAME: _sha256(catalog_bytes),
         },
         "provenance": {
             "kdd_run_id": graph["source"]["kdd_run_id"],
             "case_catalog_version": graph["source"].get("case_catalog_version"),
         },
     }
-    _atomic_json(tenant_root / CURRENT_FILENAME, pointer)
-    return pointer
+    return PreparedPublication(
+        tenant_id=tenant_id,
+        run_id=run_id,
+        graph_bytes=graph_bytes,
+        manifest=manifest,
+        manifest_bytes=manifest_bytes,
+        catalog=catalog,
+        catalog_bytes=catalog_bytes,
+        pointer=pointer,
+        pointer_bytes=_json_bytes(pointer),
+    )
+
+
+def publish_local_graph(source_dir: Path, local_target: Path, tenant_id: str = DEMO_TENANT_ID) -> dict[str, object]:
+    """Atomically publish a local immutable graph package and its pointer."""
+
+    if tenant_id != DEMO_TENANT_ID:
+        raise GraphInputError("local KG publication only supports demo-bankai")
+    prepared = prepare_publication(source_dir, tenant_id)
+    tenant_root = local_target.resolve() / tenant_id
+    version_dir = tenant_root / prepared.run_id
+    tenant_root.mkdir(parents=True, exist_ok=True)
+    if version_dir.exists():
+        existing = version_dir / MANIFEST_FILENAME
+        if not existing.is_file() or _sha256(_read_bytes(existing)) != _sha256(prepared.manifest_bytes):
+            raise GraphInputError("local graph version already exists with different content")
+    else:
+        staging = Path(tempfile.mkdtemp(prefix=f".{prepared.run_id}-", dir=tenant_root))
+        try:
+            (staging / GRAPH_FILENAME).write_bytes(prepared.graph_bytes)
+            (staging / MANIFEST_FILENAME).write_bytes(prepared.manifest_bytes)
+            (staging / CATALOG_FILENAME).write_bytes(prepared.catalog_bytes)
+            staging.replace(version_dir)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
+    _atomic_bytes(tenant_root / CURRENT_FILENAME, prepared.pointer_bytes)
+    return dict(prepared.pointer)
 
 
 def local_publication_dry_run(source_dir: Path, local_target: Path, tenant_id: str = DEMO_TENANT_ID) -> dict[str, object]:
     """Validate source and return the intended publication without writing."""
 
-    source = source_dir.resolve()
-    manifest = _read_json(source / MANIFEST_FILENAME)
-    graph_bytes = _read_bytes(source / GRAPH_FILENAME)
-    if manifest.get("graph_sha256") != _sha256(graph_bytes):
-        raise GraphInputError("graph manifest checksum mismatch")
-    graph = _decode_graph(graph_bytes)
-    catalog = _build_catalog(graph, manifest)
+    prepared = prepare_publication(source_dir, tenant_id)
     return {
         "tenant_id": tenant_id,
-        "run_id": manifest.get("run_id"),
-        "local_target": str(local_target / tenant_id / str(manifest.get("run_id"))),
-        "catalog_version": catalog["version"],
+        "run_id": prepared.run_id,
+        "local_target": str(local_target / tenant_id / prepared.run_id),
+        "catalog_version": prepared.catalog["version"],
         "publication": "local_not_requested",
     }
+
+
+def package_object_names(tenant_id: str, run_id: str, *, prefix: str = "") -> dict[str, str]:
+    """Return object names for the immutable package and pointer."""
+
+    root = _normalize_prefix(prefix)
+    version = f"{root}{tenant_id}/{run_id}"
+    return {
+        GRAPH_FILENAME: f"{version}/{GRAPH_FILENAME}",
+        MANIFEST_FILENAME: f"{version}/{MANIFEST_FILENAME}",
+        CATALOG_FILENAME: f"{version}/{CATALOG_FILENAME}",
+        CURRENT_FILENAME: f"{root}{tenant_id}/{CURRENT_FILENAME}",
+    }
+
+
+def _normalize_prefix(prefix: str) -> str:
+    cleaned = prefix.strip().strip("/")
+    return f"{cleaned}/" if cleaned else ""
 
 
 def _build_catalog(graph: Mapping[str, object], manifest: Mapping[str, object]) -> dict[str, object]:
@@ -188,8 +233,11 @@ def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
-    content = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+def _json_bytes(payload: Mapping[str, object]) -> bytes:
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def _atomic_bytes(path: Path, content: bytes) -> None:
     with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False) as temporary:
         temporary.write(content)
         temporary_path = Path(temporary.name)

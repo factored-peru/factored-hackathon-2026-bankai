@@ -12,7 +12,7 @@ import time
 import tomllib
 import warnings
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -66,6 +66,16 @@ class PopulationDefinition:
 
 
 @dataclass(frozen=True)
+class KddValidationConfig:
+    """Temporal blocked set validation over the full in-window population."""
+
+    enabled: bool = True
+    holdout_fraction: float = 0.20
+    n_folds: int = 1
+    max_confidence_delta: float = 0.10
+
+
+@dataclass(frozen=True)
 class KddConfig:
     project: str
     dataset: str
@@ -81,6 +91,7 @@ class KddConfig:
     max_itemset_length: int
     max_categorical_cardinality: int
     han_redundancy_epsilon: float = DEFAULT_HAN_REDUNDANCY_EPSILON
+    validation: KddValidationConfig = field(default_factory=KddValidationConfig)
 
 
 class BigQueryKddClient(Protocol):
@@ -173,6 +184,7 @@ def load_config(path: Path) -> KddConfig:
             settings, "max_categorical_cardinality"
         ),
         han_redundancy_epsilon=float(han_epsilon),
+        validation=_load_validation_config(settings.get("validation")),
     )
     if config.end_timestamp <= config.start_timestamp:
         raise ValueError("end_timestamp must be after start_timestamp")
@@ -207,6 +219,7 @@ def dry_run_plan(config: KddConfig) -> dict[str, object]:
             "end": config.end_timestamp.isoformat(),
         },
         "max_rows": config.max_rows,
+        "validation": asdict(config.validation),
         "graph_compilation": "not_requested",
     }
 
@@ -216,6 +229,7 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
         raise ValueError("run_id must be opaque and match the allowed format")
     results: dict[str, object] = {}
     lineage: list[dict[str, object]] = []
+    validation_artifacts: dict[str, object] = {}
     for definition in population_definitions():
         _progress(f"population={definition.name} assert_contract")
         _assert_contract(client, config, definition)
@@ -234,73 +248,76 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
         )
         del profile_frame_pd
         gc.collect()
-        matrix, feature_catalog = build_item_matrix(frame, definition, config)
-        del frame
+
+        train_frame = frame
+        holdout_frame: pl.DataFrame | None = None
+        split_meta: dict[str, object] | None = None
+        if config.validation.enabled:
+            train_frame, holdout_frame, split_meta = temporal_train_holdout_split(
+                frame,
+                definition.timestamp_column,
+                config.start_timestamp,
+                config.end_timestamp,
+                config.validation.holdout_fraction,
+            )
+            _progress(
+                f"population={definition.name} temporal_split "
+                f"train_rows={train_frame.height} holdout_rows={holdout_frame.height}"
+            )
+
+        matrix, feature_catalog = build_item_matrix(train_frame, definition, config)
+        del train_frame
         gc.collect()
         _progress(
             f"population={definition.name} matrix_shape={matrix.shape} "
             f"mine algorithms={list(config.algorithms)}"
         )
-        rules_by_algorithm: dict[str, list[dict[str, object]]] = {}
-        mining_seconds: dict[str, float] = {}
-        itemset_keys_by_algorithm: dict[str, set[frozenset[Any]]] = {}
-        apriori_itemsets_for_fpmax: pd.DataFrame | None = None
-        large_matrix = len(matrix) > 100_000
-        for algorithm in config.algorithms:
-            started = time.perf_counter()
-            _progress(f"population={definition.name} algorithm={algorithm} start")
-            if (
-                large_matrix
-                and algorithm == "apriori_hybrid"
-                and "apriori" in rules_by_algorithm
-            ):
-                # Apriori already used the vertical TID backend on large matrices.
-                itemset_keys_by_algorithm[algorithm] = set(
-                    itemset_keys_by_algorithm["apriori"]
-                )
-                rules_by_algorithm[algorithm] = list(rules_by_algorithm["apriori"])
-                mining_seconds[algorithm] = 0.0
-                _progress(
-                    f"population={definition.name} algorithm={algorithm} "
-                    "reused_vertical_apriori"
-                )
-                continue
-            itemsets = mine_frequent_itemsets(matrix, algorithm, config)
-            itemset_keys_by_algorithm[algorithm] = itemset_keys(itemsets)
-            rules_by_algorithm[algorithm] = refine_mined_rules(
-                rules_from_itemsets(itemsets, definition.target_column, config),
-                definition,
-                epsilon=config.han_redundancy_epsilon,
+        mined = _mine_matrix_rules(matrix, definition, config)
+        rules_by_algorithm = mined["rules_by_algorithm"]
+        diagnostics = mined["diagnostics"]
+        comparison = compare_rule_sets(rules_by_algorithm)
+
+        validation_payload: dict[str, object] | None = None
+        if config.validation.enabled and holdout_frame is not None and split_meta is not None:
+            holdout_matrix, _ = build_item_matrix(holdout_frame, definition, config)
+            holdout_matrix = holdout_matrix.reindex(columns=matrix.columns, fill_value=False)
+            consensus = consensus_rules(rules_by_algorithm)
+            holdout_eval = evaluate_rules_on_matrix(
+                consensus,
+                holdout_matrix,
+                min_lift=config.min_lift,
+                max_confidence_delta=config.validation.max_confidence_delta,
             )
-            if algorithm == "apriori" and not large_matrix:
-                apriori_itemsets_for_fpmax = itemsets
-            else:
-                del itemsets
-            mining_seconds[algorithm] = round(time.perf_counter() - started, 6)
-            _progress(
-                f"population={definition.name} algorithm={algorithm} "
-                f"seconds={mining_seconds[algorithm]} "
-                f"rules={len(rules_by_algorithm[algorithm])}"
-            )
+            validation_payload = {
+                "protocol": "temporal_train_holdout",
+                "split": split_meta,
+                "train_row_count": int(len(matrix)),
+                "holdout_row_count": int(len(holdout_matrix)),
+                "consensus_rule_count": len(consensus),
+                "holdout": holdout_eval,
+            }
+            if config.validation.n_folds > 1:
+                validation_payload["folds"] = temporal_blocked_fold_validation(
+                    frame,
+                    definition,
+                    config,
+                )
+            validation_artifacts[definition.name] = validation_payload
+            del holdout_matrix
+            del holdout_frame
             gc.collect()
-        hybrid_parity = _assert_hybrid_apriori_parity_keys(itemset_keys_by_algorithm)
-        diagnostics = {
-            "mining_seconds": mining_seconds,
-            "hybrid_apriori_parity": hybrid_parity,
-            "apriori_backend": _apriori_backend_name(len(matrix)),
-            **fpmax_diagnostics(matrix, apriori_itemsets_for_fpmax, config),
-        }
+
+        del frame
         results[definition.name] = {
             "quality_profile": profile,
             "feature_catalog": feature_catalog,
             "rules": rules_by_algorithm,
-            "comparison": compare_rule_sets(rules_by_algorithm),
+            "comparison": comparison,
             "diagnostics": diagnostics,
+            "validation": validation_payload,
         }
         lineage.append(source)
         del matrix
-        del itemset_keys_by_algorithm
-        del apriori_itemsets_for_fpmax
         gc.collect()
         _progress(f"population={definition.name} complete")
     manifest = {
@@ -311,8 +328,12 @@ def run_kdd(config: KddConfig, run_id: str, client: BigQueryKddClient) -> dict[s
         "populations": list(results),
         "graph_compilation": "not_requested",
         "consensus_algorithms": sorted(CONSENSUS_ALGORITHMS),
+        "validation": asdict(config.validation),
     }
-    write_artifacts(config.output_dir / run_id, manifest, results)
+    output_dir = config.output_dir / run_id
+    write_artifacts(output_dir, manifest, results)
+    if validation_artifacts:
+        write_validation_artifacts(output_dir, validation_artifacts)
     _progress(f"run_id={run_id} artifacts_written")
     return manifest
 
@@ -342,6 +363,301 @@ def mine_frequent_itemsets(
         use_colnames=True,
         max_len=config.max_itemset_length,
     )
+
+
+def _load_validation_config(raw: object) -> KddValidationConfig:
+    if raw is None:
+        return KddValidationConfig()
+    if not isinstance(raw, Mapping):
+        raise ValueError("kdd.validation must be a table")
+    enabled = raw.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("kdd.validation.enabled must be a boolean")
+    holdout_fraction = raw.get("holdout_fraction", 0.20)
+    if not isinstance(holdout_fraction, (int, float)) or not 0 < float(holdout_fraction) < 1:
+        raise ValueError("kdd.validation.holdout_fraction must be in (0, 1)")
+    n_folds = raw.get("n_folds", 1)
+    if not isinstance(n_folds, int) or n_folds < 1:
+        raise ValueError("kdd.validation.n_folds must be a positive integer")
+    max_confidence_delta = raw.get("max_confidence_delta", 0.10)
+    if not isinstance(max_confidence_delta, (int, float)) or not 0 <= float(max_confidence_delta) <= 1:
+        raise ValueError("kdd.validation.max_confidence_delta must be in [0, 1]")
+    return KddValidationConfig(
+        enabled=enabled,
+        holdout_fraction=float(holdout_fraction),
+        n_folds=n_folds,
+        max_confidence_delta=float(max_confidence_delta),
+    )
+
+
+def temporal_train_holdout_split(
+    frame: pl.DataFrame,
+    timestamp_column: str,
+    start: datetime,
+    end: datetime,
+    holdout_fraction: float,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, object]]:
+    """Split the full population by the configured time window (no row sampling)."""
+
+    if not 0 < holdout_fraction < 1:
+        raise ValueError("holdout_fraction must be in (0, 1)")
+    cutoff = start + (end - start) * (1.0 - holdout_fraction)
+    train = frame.filter(pl.col(timestamp_column) < cutoff)
+    holdout = frame.filter(pl.col(timestamp_column) >= cutoff)
+    if train.height == 0 or holdout.height == 0:
+        raise ValueError("temporal validation produced an empty train or holdout set")
+    return train, holdout, {
+        "cutoff": cutoff.isoformat(),
+        "holdout_fraction": holdout_fraction,
+        "train_rows": int(train.height),
+        "holdout_rows": int(holdout.height),
+    }
+
+
+def temporal_blocks(
+    frame: pl.DataFrame,
+    timestamp_column: str,
+    start: datetime,
+    end: datetime,
+    n_folds: int,
+) -> list[pl.DataFrame]:
+    if n_folds < 2:
+        raise ValueError("n_folds must be >= 2 for blocked folds")
+    span = end - start
+    blocks: list[pl.DataFrame] = []
+    for index in range(n_folds):
+        lo = start + span * (index / n_folds)
+        hi = end if index == n_folds - 1 else start + span * ((index + 1) / n_folds)
+        block = frame.filter(
+            (pl.col(timestamp_column) >= lo) & (pl.col(timestamp_column) < hi)
+        )
+        if block.height == 0:
+            raise ValueError(f"temporal fold {index} is empty")
+        blocks.append(block)
+    return blocks
+
+
+def _mine_matrix_rules(
+    matrix: pd.DataFrame, definition: PopulationDefinition, config: KddConfig
+) -> dict[str, object]:
+    rules_by_algorithm: dict[str, list[dict[str, object]]] = {}
+    mining_seconds: dict[str, float] = {}
+    itemset_keys_by_algorithm: dict[str, set[frozenset[Any]]] = {}
+    apriori_itemsets_for_fpmax: pd.DataFrame | None = None
+    large_matrix = len(matrix) > 100_000
+    for algorithm in config.algorithms:
+        started = time.perf_counter()
+        _progress(f"population={definition.name} algorithm={algorithm} start")
+        if (
+            large_matrix
+            and algorithm == "apriori_hybrid"
+            and "apriori" in rules_by_algorithm
+        ):
+            itemset_keys_by_algorithm[algorithm] = set(itemset_keys_by_algorithm["apriori"])
+            rules_by_algorithm[algorithm] = list(rules_by_algorithm["apriori"])
+            mining_seconds[algorithm] = 0.0
+            _progress(
+                f"population={definition.name} algorithm={algorithm} reused_vertical_apriori"
+            )
+            continue
+        itemsets = mine_frequent_itemsets(matrix, algorithm, config)
+        itemset_keys_by_algorithm[algorithm] = itemset_keys(itemsets)
+        rules_by_algorithm[algorithm] = refine_mined_rules(
+            rules_from_itemsets(itemsets, definition.target_column, config),
+            definition,
+            epsilon=config.han_redundancy_epsilon,
+        )
+        if algorithm == "apriori" and not large_matrix:
+            apriori_itemsets_for_fpmax = itemsets
+        else:
+            del itemsets
+        mining_seconds[algorithm] = round(time.perf_counter() - started, 6)
+        _progress(
+            f"population={definition.name} algorithm={algorithm} "
+            f"seconds={mining_seconds[algorithm]} "
+            f"rules={len(rules_by_algorithm[algorithm])}"
+        )
+        gc.collect()
+    diagnostics = {
+        "mining_seconds": mining_seconds,
+        "hybrid_apriori_parity": _assert_hybrid_apriori_parity_keys(itemset_keys_by_algorithm),
+        "apriori_backend": _apriori_backend_name(len(matrix)),
+        **fpmax_diagnostics(matrix, apriori_itemsets_for_fpmax, config),
+    }
+    return {"rules_by_algorithm": rules_by_algorithm, "diagnostics": diagnostics}
+
+
+def consensus_rules(
+    rules_by_algorithm: Mapping[str, list[dict[str, object]]],
+) -> list[dict[str, object]]:
+    """Return corroborated Apriori ∩ FP-Growth ∩ Eclat rules with shared metrics."""
+
+    required = sorted(CONSENSUS_ALGORITHMS)
+    if any(algorithm not in rules_by_algorithm for algorithm in required):
+        return []
+    indexed = {
+        algorithm: {_rule_key(rule): rule for rule in rules_by_algorithm[algorithm]}
+        for algorithm in required
+    }
+    shared = set.intersection(*(set(index) for index in indexed.values()))
+    output: list[dict[str, object]] = []
+    for key in sorted(shared):
+        metrics = [indexed[algorithm][key] for algorithm in required]
+        if not all(
+            metrics[0]["support"] == other["support"]
+            and metrics[0]["confidence"] == other["confidence"]
+            and metrics[0]["lift"] == other["lift"]
+            for other in metrics[1:]
+        ):
+            continue
+        output.append(dict(metrics[0]))
+    return output
+
+
+def evaluate_rules_on_matrix(
+    rules: list[dict[str, object]],
+    matrix: pd.DataFrame,
+    *,
+    min_lift: float,
+    max_confidence_delta: float,
+) -> dict[str, object]:
+    """Recompute support/confidence/lift for mined rules on a held-out matrix."""
+
+    evaluated: list[dict[str, object]] = []
+    stable = 0
+    if matrix.empty or not rules:
+        return {
+            "rule_count": len(rules),
+            "stable_rule_count": 0,
+            "stable_fraction": 1.0 if not rules else 0.0,
+            "rules": [],
+        }
+    for rule in rules:
+        antecedents = list(rule["antecedents"])
+        consequent = str(rule["consequent"])
+        missing = [item for item in (*antecedents, consequent) if item not in matrix.columns]
+        if missing:
+            holdout_support = 0.0
+            holdout_confidence = 0.0
+            holdout_lift = 0.0
+        else:
+            antecedent_mask = (
+                matrix[antecedents].all(axis=1)
+                if antecedents
+                else pd.Series(True, index=matrix.index)
+            )
+            consequent_mask = matrix[consequent]
+            joint = antecedent_mask & consequent_mask
+            holdout_support = float(joint.mean())
+            antecedent_support = float(antecedent_mask.mean())
+            consequent_support = float(consequent_mask.mean())
+            holdout_confidence = (
+                float(joint.sum() / antecedent_mask.sum()) if antecedent_mask.any() else 0.0
+            )
+            holdout_lift = (
+                holdout_confidence / consequent_support if consequent_support > 0 else 0.0
+            )
+        confidence_delta = abs(holdout_confidence - float(rule["confidence"]))
+        is_stable = holdout_lift >= min_lift and confidence_delta <= max_confidence_delta
+        if is_stable:
+            stable += 1
+        evaluated.append(
+            {
+                "antecedents": antecedents,
+                "consequent": consequent,
+                "train_support": rule["support"],
+                "train_confidence": rule["confidence"],
+                "train_lift": rule["lift"],
+                "holdout_support": round(holdout_support, 6),
+                "holdout_confidence": round(holdout_confidence, 6),
+                "holdout_lift": round(holdout_lift, 6),
+                "confidence_delta": round(confidence_delta, 6),
+                "stable": is_stable,
+            }
+        )
+    return {
+        "rule_count": len(rules),
+        "stable_rule_count": stable,
+        "stable_fraction": round(stable / len(rules), 6) if rules else 1.0,
+        "rules": evaluated,
+    }
+
+
+def temporal_blocked_fold_validation(
+    frame: pl.DataFrame,
+    definition: PopulationDefinition,
+    config: KddConfig,
+) -> dict[str, object]:
+    """Mine on all-but-fold-i / evaluate on fold-i; report cross-fold Jaccard."""
+
+    blocks = temporal_blocks(
+        frame,
+        definition.timestamp_column,
+        config.start_timestamp,
+        config.end_timestamp,
+        config.validation.n_folds,
+    )
+    fold_keys: list[set[tuple[tuple[str, ...], str]]] = []
+    fold_summaries: list[dict[str, object]] = []
+    for index, holdout_block in enumerate(blocks):
+        train_parts = [block for fold_index, block in enumerate(blocks) if fold_index != index]
+        train_frame = pl.concat(train_parts, how="vertical_relaxed")
+        train_matrix, _ = build_item_matrix(train_frame, definition, config)
+        mined = _mine_matrix_rules(train_matrix, definition, config)
+        consensus = consensus_rules(mined["rules_by_algorithm"])
+        holdout_matrix, _ = build_item_matrix(holdout_block, definition, config)
+        holdout_matrix = holdout_matrix.reindex(columns=train_matrix.columns, fill_value=False)
+        evaluation = evaluate_rules_on_matrix(
+            consensus,
+            holdout_matrix,
+            min_lift=config.min_lift,
+            max_confidence_delta=config.validation.max_confidence_delta,
+        )
+        keys = {_rule_key(rule) for rule in consensus}
+        fold_keys.append(keys)
+        fold_summaries.append(
+            {
+                "fold": index,
+                "train_rows": int(len(train_matrix)),
+                "holdout_rows": int(len(holdout_matrix)),
+                "consensus_rule_count": len(consensus),
+                "stable_fraction": evaluation["stable_fraction"],
+            }
+        )
+        del train_matrix
+        del holdout_matrix
+        gc.collect()
+    pairwise: dict[str, float] = {}
+    for left in range(len(fold_keys)):
+        for right in range(left + 1, len(fold_keys)):
+            union = fold_keys[left] | fold_keys[right]
+            jaccard = (
+                len(fold_keys[left] & fold_keys[right]) / len(union) if union else 1.0
+            )
+            pairwise[f"{left}_vs_{right}"] = round(jaccard, 6)
+    shared = set.intersection(*fold_keys) if fold_keys else set()
+    union_all = set.union(*fold_keys) if fold_keys else set()
+    return {
+        "n_folds": config.validation.n_folds,
+        "folds": fold_summaries,
+        "pairwise_jaccard": pairwise,
+        "multi_fold_jaccard": round(len(shared) / len(union_all), 6) if union_all else 1.0,
+        "shared_rule_count": len(shared),
+    }
+
+
+def write_validation_artifacts(
+    output_dir: Path, validation_artifacts: Mapping[str, object]
+) -> None:
+    validation_dir = output_dir / "validation"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    for population, payload in validation_artifacts.items():
+        if not isinstance(payload, Mapping):
+            continue
+        _write_json(validation_dir / f"{population}-holdout-metrics.json", payload)
+        folds = payload.get("folds")
+        if isinstance(folds, Mapping):
+            _write_json(validation_dir / f"{population}-folds.json", folds)
 
 
 def _apriori_backend_name(row_count: int) -> str:

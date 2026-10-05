@@ -27,3 +27,10 @@ han_redundancy_epsilon = 0.05
 # - fpmax runs as diagnostics only and never feeds the graph.
 # - no complaint↔transaction join (C6 remains blocked without a canonical key).
 # - max_rows must be >= population size in-window to mine without sampling.
+
+[kdd.validation]
+# Temporal train/holdout on the full in-window population (no subsample).
+enabled = true
+holdout_fraction = 0.20
+n_folds = 1
+max_confidence_delta = 0.10
