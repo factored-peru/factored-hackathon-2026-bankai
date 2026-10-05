@@ -29,9 +29,12 @@ tfvars — they are merged from `state`.
 | `APP_ENV` | `staging` |
 | `DEMO_AUTH_ENABLED` | `true` |
 | `REALTIME_ENABLED` | `true` (needs `CORS_ALLOWED_ORIGINS`) |
-| `CHAT_ENABLED` | `false` |
+| `CHAT_ENABLED` | `true` |
+| `CHAT_PIPELINE` | `baseline` |
 | `AGENTIC_CHAT_ENABLED` | `false` |
-| `BASELINE_CHAT_ENABLED` | `false` |
+| `BASELINE_CHAT_ENABLED` | `true` |
+| `VERTEX_AI_ENABLED` | `true` (`VERTEX_AI_PROJECT_ID` / `LOCATION` / `MODEL`) |
+| `BIGQUERY_ENABLED` | `true` (`GOOGLE_CLOUD_*`, `BIGQUERY_DATASET`, catalog paths) |
 | `KG_RAG_LOCAL_ENABLED` | `false` |
 | `GCS_GRAPH_TENANT_ID` | `demo-bankai` |
 | `LLM_CACHE_ENABLED` | `false` until baseline/agentic needs exact-match (requires `KV_URL`) |
@@ -43,6 +46,7 @@ tfvars — they are merged from `state`.
 | --- | --- |
 | `SERVICE_TOKEN` | `APP_ENV` is staging or prod |
 | `PRIVATE_DATA_ENCRYPTION_KEY` | `SESSION_STORE_ENABLED=true` (32-byte key, base64url) |
+| `DEMO_ACTOR_HMAC_KEY` | `BIGQUERY_ENABLED=true` with demo actors |
 
 ## LLM cache notes
 

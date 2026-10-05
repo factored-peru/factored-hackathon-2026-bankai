@@ -27,7 +27,13 @@ variable "kg_artifact_bucket_name" {
 variable "backend_environment" {
   type        = map(string)
   default     = {}
-  description = "Non-secret runtime configuration only. Secrets use Secret Manager references later."
+  description = "Non-secret runtime configuration only. Secrets use backend_secret_environment."
+}
+
+variable "backend_secret_environment" {
+  type        = map(string)
+  default     = {}
+  description = "Env var name → Secret Manager secret id (mounted as value_source.secret_key_ref)."
 }
 
 variable "pipeline_environment" {

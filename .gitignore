@@ -62,3 +62,10 @@ app/backend/tmp/
 
 # Python packaging artifacts
 *.egg-info/
+
+# Local Terraform var files (secrets/digests; keep example only)
+**/terraform.tfvars
+**/*.auto.tfvars
+
+# Local deploy secrets (never commit)
+**/.local-secrets/

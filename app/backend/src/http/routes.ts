@@ -54,6 +54,11 @@ function serviceTokenFromHeader(request: FastifyRequest): string | undefined {
 	return header.slice("Bearer ".length);
 }
 
+function sessionSetCookieHeader(cookieName: string, sessionId: string): string {
+	const secure = cookieName.startsWith("__Host-") ? "; Secure" : "";
+	return `${cookieName}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Strict${secure}`;
+}
+
 function tokensMatch(actual: string, expected: string): boolean {
 	const actualBuffer = Buffer.from(actual);
 	const expectedBuffer = Buffer.from(expected);
@@ -272,7 +277,7 @@ export function registerRoutes(
 		const session = await disputeRuntime.auth.create(token);
 		reply.header(
 			"Set-Cookie",
-			`${runtimeEnv.SESSION_COOKIE_NAME}=${encodeURIComponent(session.sessionId)}; Path=/; HttpOnly; SameSite=Strict`,
+			sessionSetCookieHeader(runtimeEnv.SESSION_COOKIE_NAME, session.sessionId),
 		);
 		return reply.code(201).send({ status: "created" });
 	});
@@ -376,7 +381,7 @@ export function registerRoutes(
 		});
 		reply.header(
 			"Set-Cookie",
-			`${runtimeEnv.SESSION_COOKIE_NAME}=${encodeURIComponent(session.sessionId)}; Path=/; HttpOnly; SameSite=Strict`,
+			sessionSetCookieHeader(runtimeEnv.SESSION_COOKIE_NAME, session.sessionId),
 		);
 		return reply
 			.code(201)

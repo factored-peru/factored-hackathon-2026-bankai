@@ -43,10 +43,37 @@ resource "google_project_iam_member" "backend_firestore_user" {
   member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
+resource "google_project_iam_member" "backend_bigquery_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.backend.email}"
+}
+
+resource "google_project_iam_member" "backend_bigquery_data_viewer" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.backend.email}"
+}
+
+resource "google_project_iam_member" "backend_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.backend.email}"
+}
+
 resource "google_project_iam_member" "pipeline_firestore_user" {
   project = var.project_id
   role    = "roles/datastore.user"
   member  = "serviceAccount:${google_service_account.pipeline.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "backend_secret_accessor" {
+  for_each = var.backend_secret_environment
+
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.backend.email}"
 }
 
 locals {
@@ -78,6 +105,8 @@ resource "google_cloud_run_v2_service" "backend" {
   name     = "${var.name_prefix}-backend"
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
+  # Hackathon/dev: allow replace if a bad first revision blocks updates.
+  deletion_protection = false
 
   template {
     service_account = google_service_account.backend.email
@@ -104,6 +133,19 @@ resource "google_cloud_run_v2_service" "backend" {
           value = env.value
         }
       }
+
+      dynamic "env" {
+        for_each = var.backend_secret_environment
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
+      }
     }
   }
 
@@ -115,7 +157,11 @@ resource "google_cloud_run_v2_service" "backend" {
   # CI updates digests via gcloud; Terraform owns env, VPC, IAM, and scaling.
   lifecycle {
     ignore_changes = [
+      client,
+      client_version,
+      scaling,
       template[0].containers[0].image,
+      template[0].labels,
     ]
   }
 }
@@ -149,6 +195,8 @@ resource "google_cloud_run_v2_job" "pipeline" {
 
   lifecycle {
     ignore_changes = [
+      client,
+      client_version,
       template[0].template[0].containers[0].image,
     ]
   }

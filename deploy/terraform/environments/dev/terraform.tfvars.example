@@ -13,18 +13,36 @@ upload_bucket_name      = "REPLACE-with-globally-unique-private-uploads-bucket"
 
 # Staging matrix: DEMO_AUTH on for current frontend; productive stores on via
 # runtime injection (FIRESTORE/GCS_UPLOAD/SESSION/KV_URL). Secrets stay out of Git.
+# Baseline chat uses Vertex + BigQuery; keep AGENTIC_CHAT_ENABLED=false.
 backend_environment = {
-  APP_ENV                   = "staging"
-  DEMO_AUTH_ENABLED         = "true"
-  GCS_GRAPH_TENANT_ID       = "demo-bankai"
-  GCS_GRAPH_ARTIFACT_PREFIX = ""
-  REALTIME_ENABLED          = "true"
-  CORS_ALLOWED_ORIGINS      = "http://localhost:3001,https://REPLACE-frontend-origin"
-  CHAT_ENABLED              = "false"
-  AGENTIC_CHAT_ENABLED      = "false"
-  BASELINE_CHAT_ENABLED     = "false"
-  KG_RAG_LOCAL_ENABLED      = "false"
-  # SERVICE_TOKEN and PRIVATE_DATA_ENCRYPTION_KEY: Secret Manager / CI only.
+  APP_ENV                     = "staging"
+  DEMO_AUTH_ENABLED           = "true"
+  GCS_GRAPH_TENANT_ID         = "demo-bankai"
+  GCS_GRAPH_ARTIFACT_PREFIX   = ""
+  REALTIME_ENABLED            = "true"
+  CORS_ALLOWED_ORIGINS        = "http://localhost:3001,https://REPLACE-frontend-origin"
+  CHAT_ENABLED                = "true"
+  AGENTIC_CHAT_ENABLED        = "false"
+  CHAT_PIPELINE               = "baseline"
+  BASELINE_CHAT_ENABLED       = "true"
+  KG_RAG_LOCAL_ENABLED        = "false"
+  VERTEX_AI_ENABLED           = "true"
+  VERTEX_AI_PROJECT_ID        = "factored-hackathon"
+  VERTEX_AI_LOCATION          = "us-central1"
+  VERTEX_AI_MODEL             = "gemini-2.5-flash"
+  BIGQUERY_ENABLED            = "true"
+  GOOGLE_CLOUD_PROJECT        = "factored-hackathon"
+  GOOGLE_CLOUD_LOCATION       = "us-central1"
+  BIGQUERY_DATASET            = "hackathon"
+  STRUCTURED_CATALOG_PATH     = "config/structured-catalog.example.json"
+  BASELINE_QUERY_CATALOG_PATH = "config/structured-catalog.example.json"
+}
+
+# Secret Manager secret ids only (never secret values in Git).
+backend_secret_environment = {
+  SERVICE_TOKEN               = "bankai-SERVICE_TOKEN"
+  PRIVATE_DATA_ENCRYPTION_KEY = "bankai-PRIVATE_DATA_ENCRYPTION_KEY"
+  DEMO_ACTOR_HMAC_KEY         = "bankai-DEMO_ACTOR_HMAC_KEY"
 }
 
 # GCS_GRAPH_BUCKET, GCS_UPLOAD_BUCKET, FIRESTORE_ENABLED, GCS_ENABLED,

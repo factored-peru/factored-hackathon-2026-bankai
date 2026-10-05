@@ -44,20 +44,26 @@ echo "-- tfvars.example staging matrix keys"
 grep -q 'APP_ENV.*=.*"staging"' "$EXAMPLE"
 grep -q 'DEMO_AUTH_ENABLED.*=.*"true"' "$EXAMPLE"
 grep -q 'upload_bucket_name' "$EXAMPLE"
-grep -q 'CHAT_ENABLED.*=.*"false"' "$EXAMPLE"
+grep -q 'CHAT_ENABLED.*=.*"true"' "$EXAMPLE"
+grep -q 'CHAT_PIPELINE.*=.*"baseline"' "$EXAMPLE"
+grep -q 'BASELINE_CHAT_ENABLED.*=.*"true"' "$EXAMPLE"
 grep -q 'AGENTIC_CHAT_ENABLED.*=.*"false"' "$EXAMPLE"
+grep -q 'VERTEX_AI_ENABLED.*=.*"true"' "$EXAMPLE"
+grep -q 'BIGQUERY_ENABLED.*=.*"true"' "$EXAMPLE"
 grep -q 'KG_RAG_LOCAL_ENABLED.*=.*"false"' "$EXAMPLE"
+grep -q 'DEMO_ACTOR_HMAC_KEY.*=.*"bankai-DEMO_ACTOR_HMAC_KEY"' "$EXAMPLE"
+grep -q 'roles/aiplatform.user' "$RUNTIME_MOD/main.tf"
+grep -q 'roles/bigquery.jobUser' "$RUNTIME_MOD/main.tf"
 grep -q '@sha256:' "$EXAMPLE"
 
-echo "-- no secrets committed in example"
-if grep -E 'SERVICE_TOKEN|PRIVATE_DATA_ENCRYPTION_KEY' "$EXAMPLE" | grep -vE '#|Secret Manager|CI' >/dev/null 2>&1; then
-  # Allow comment mentions only
-  :
-fi
-if grep -E '^\s*SERVICE_TOKEN\s*=' "$EXAMPLE" || grep -E '^\s*PRIVATE_DATA_ENCRYPTION_KEY\s*=' "$EXAMPLE"; then
-  echo "secrets must not be assigned in terraform.tfvars.example" >&2
+echo "-- no secret material committed in example (Secret Manager ids OK)"
+if grep -E '^\s*(SERVICE_TOKEN|PRIVATE_DATA_ENCRYPTION_KEY|DEMO_ACTOR_HMAC_KEY)\s*=' "$EXAMPLE" \
+  | grep -vE '=\s*"bankai-[A-Z0-9_]+"' >/dev/null; then
+  echo "secret env assignments in example must be Secret Manager ids (bankai-…)" >&2
   exit 1
 fi
+grep -q 'backend_secret_environment' "$EXAMPLE"
+grep -q 'secret_key_ref' "$RUNTIME_MOD/main.tf"
 
 echo "-- env wiring references in modules"
 grep -q 'GCS_UPLOAD_BUCKET' "$RUNTIME_MOD/main.tf"

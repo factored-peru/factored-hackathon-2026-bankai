@@ -104,7 +104,9 @@ FROM (
 )`.trim();
 		const [rows] = await this.bigquery.query({
 			query,
-			maximumBytesBilled: "50000000",
+			// Cohort scan of transactions+complaints is ~82 MiB on the hackathon
+			// dataset; keep a small headroom under the query-catalog ceiling.
+			maximumBytesBilled: "150000000",
 			useLegacySql: false,
 			labels: { component: "demo_directory" },
 		});

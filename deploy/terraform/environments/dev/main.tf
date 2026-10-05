@@ -24,11 +24,12 @@ module "runtime" {
   backend_image           = var.backend_image
   pipeline_image          = var.pipeline_image
   kg_artifact_bucket_name = var.kg_artifact_bucket_name
-  backend_environment     = var.backend_environment
-  pipeline_environment    = var.pipeline_environment
-  upload_bucket_name      = module.state.upload_bucket_name
-  kv_url                  = module.state.kv_url
-  vpc_connector_id        = module.state.vpc_connector_id
+  backend_environment        = var.backend_environment
+  backend_secret_environment = var.backend_secret_environment
+  pipeline_environment       = var.pipeline_environment
+  upload_bucket_name         = module.state.upload_bucket_name
+  kv_url                     = module.state.kv_url
+  vpc_connector_id           = module.state.vpc_connector_id
 }
 
 resource "google_storage_bucket_iam_member" "backend_upload_writer" {
