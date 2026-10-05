@@ -77,13 +77,13 @@ need gcloud
 PREFIX="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}"
 SHA_TAG="${PREFIX}:${GIT_SHA}"
 
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet >&2
 docker tag "$LOCAL_TAG" "$SHA_TAG"
-docker push "$SHA_TAG"
+docker push "$SHA_TAG" >&2
 
 if [[ "$PUSH_LATEST" -eq 1 ]]; then
-  docker tag "$LOCAL_TAG" "${PREFIX}:latest"
-  docker push "${PREFIX}:latest"
+	docker tag "$LOCAL_TAG" "${PREFIX}:latest"
+	docker push "${PREFIX}:latest" >&2
 fi
 
 DIGEST="$(docker image inspect "$SHA_TAG" --format '{{index .RepoDigests 0}}' 2>/dev/null || true)"

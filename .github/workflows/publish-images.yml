@@ -61,7 +61,11 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          DIGEST="$(bash scripts/publish-image.sh --push --git-sha "$GIT_SHA")"
+          DIGEST="$(bash scripts/publish-image.sh --push --git-sha "$GIT_SHA" | tee /dev/stderr | grep -E '@sha256:[0-9a-f]+$' | tail -n 1)"
+          if [[ -z "$DIGEST" || "$DIGEST" != *@sha256:* ]]; then
+            echo "failed to resolve backend digest" >&2
+            exit 1
+          fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "Backend digest: $DIGEST"
 
@@ -72,7 +76,11 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          DIGEST="$(bash scripts/publish-image.sh --push --git-sha "$GIT_SHA")"
+          DIGEST="$(bash scripts/publish-image.sh --push --git-sha "$GIT_SHA" | tee /dev/stderr | grep -E '@sha256:[0-9a-f]+$' | tail -n 1)"
+          if [[ -z "$DIGEST" || "$DIGEST" != *@sha256:* ]]; then
+            echo "failed to resolve pipeline digest" >&2
+            exit 1
+          fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "Pipeline digest: $DIGEST"
 
