@@ -51,7 +51,15 @@ export const envSchema = z.object({
 		.default(30_000),
 	STRUCTURED_CATALOG_PATH: z.string().default("config/structured-catalog.json"),
 	GCS_ENABLED: envBoolean.default(false),
-	GCS_GRAPH_ARTIFACT_PREFIX: z.string().default("knowledge-graph/"),
+	/** Private KG artifact bucket; set by Terraform from kg_artifacts. */
+	GCS_GRAPH_BUCKET: z.string().default(""),
+	/**
+	 * Object prefix inside the KG bucket. Must match pipeline `--gcs-prefix`
+	 * (default empty → `{tenant}/current.json`).
+	 */
+	GCS_GRAPH_ARTIFACT_PREFIX: z.string().default(""),
+	/** Tenant allowed to read the published KG package from GCS. */
+	GCS_GRAPH_TENANT_ID: z.string().default("demo-bankai"),
 	/** Development-only file adapter; production must use the validated GCS publisher. */
 	KG_RAG_LOCAL_ENABLED: envBoolean.default(false),
 	KG_RAG_LOCAL_ARTIFACT_DIR: z.string().default(".local/kg-rag"),
@@ -304,6 +312,23 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		throw new Error(
 			"SVC-CORE-9013: KG_RAG_LOCAL_TENANT_ID must be demo-bankai",
 		);
+	}
+	if (settings.GCS_GRAPH_BUCKET.length > 0) {
+		if (settings.APP_ENV === "prod" && !settings.GCS_ENABLED) {
+			throw new Error(
+				"SVC-CORE-9014: GCS_GRAPH_BUCKET in prod requires GCS_ENABLED=true",
+			);
+		}
+		if (settings.APP_ENV === "prod" && settings.KG_RAG_LOCAL_ENABLED) {
+			throw new Error(
+				"SVC-CORE-9015: GCS_GRAPH_BUCKET in prod forbids KG_RAG_LOCAL_ENABLED",
+			);
+		}
+		if (settings.GCS_GRAPH_TENANT_ID.trim().length === 0) {
+			throw new Error(
+				"SVC-CORE-9016: GCS_GRAPH_TENANT_ID is required with GCS_GRAPH_BUCKET",
+			);
+		}
 	}
 	if (
 		settings.DEMO_AUTH_ENABLED &&

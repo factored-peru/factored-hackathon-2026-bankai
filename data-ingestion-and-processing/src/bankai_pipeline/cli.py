@@ -26,8 +26,12 @@ from bankai_pipeline.c5 import load_config as load_c5_config
 from bankai_pipeline.c5 import run as run_c5
 from bankai_pipeline.dispute_contracts import CONTRACTS
 from bankai_pipeline.graph import compile_graph, graph_dry_run_plan
-from bankai_pipeline.kg_publication import local_publication_dry_run, publish_local_graph
+from bankai_pipeline.gcs_publication import gcs_publication_dry_run, publish_gcs_graph
+from bankai_pipeline.kg_publication import local_publication_dry_run, prepare_publication, publish_local_graph
+from bankai_pipeline.pipeline_lease import DEFAULT_LEASE_TTL_SECONDS, FirestorePipelineLease
 from bankai_pipeline.kdd import dry_run_plan, load_config, run_kdd
+from bankai_pipeline.metrics_report import dry_run_plan as metrics_dry_run_plan
+from bankai_pipeline.metrics_report import run_report
 from bankai_pipeline.preparation import preparation_dry_run_plan
 from bankai_pipeline.suite import build as build_suite
 
@@ -45,6 +49,7 @@ STAGES = (
     "evaluate-supervised-suite",
     "compile-graph",
     "publish",
+    "report-metrics",
 )
 
 
@@ -65,9 +70,30 @@ def main() -> None:
         help="Compiled graph directory required when --stage publish is executed.",
     )
     parser.add_argument(
+        "--publish-backend",
+        choices=("local", "gcs"),
+        default="local",
+        help="KG publication destination; gcs requires a Firestore lease before current.json.",
+    )
+    parser.add_argument(
         "--local-target",
         type=Path,
-        help="Local-only KG publication root required when --stage publish is executed.",
+        help="Local KG publication root required when --publish-backend local.",
+    )
+    parser.add_argument(
+        "--gcs-bucket",
+        help="GCS bucket for immutable KG packages when --publish-backend gcs.",
+    )
+    parser.add_argument(
+        "--gcs-prefix",
+        default="",
+        help="Optional object prefix inside the KG bucket (default empty).",
+    )
+    parser.add_argument(
+        "--lease-ttl-seconds",
+        type=int,
+        default=DEFAULT_LEASE_TTL_SECONDS,
+        help="Firestore lease TTL for GCS publish ownership.",
     )
     parser.add_argument("--kg-tenant-id", default="demo-bankai")
     parser.add_argument(
@@ -99,6 +125,12 @@ def main() -> None:
         type=Path,
         default=Path("artifacts/graph"),
         help="Local graph artifact root; publish remains a separate stage.",
+    )
+    parser.add_argument(
+        "--report-output-dir",
+        type=Path,
+        default=Path("artifacts/reports"),
+        help="Local interpretability report root for --stage report-metrics.",
     )
     args = parser.parse_args()
 
@@ -169,15 +201,64 @@ def main() -> None:
         return
 
     if args.stage == "publish":
-        if args.graph_artifact_dir is None or args.local_target is None:
-            parser.error("--graph-artifact-dir and --local-target are required for local KG publication")
-        if args.dry_run:
-            print(json.dumps(local_publication_dry_run(args.graph_artifact_dir, args.local_target, args.kg_tenant_id), ensure_ascii=False, sort_keys=True))
+        if args.graph_artifact_dir is None:
+            parser.error("--graph-artifact-dir is required for --stage publish")
+        if args.publish_backend == "local":
+            if args.local_target is None:
+                parser.error("--local-target is required for --publish-backend local")
+            if args.dry_run:
+                print(
+                    json.dumps(
+                        local_publication_dry_run(
+                            args.graph_artifact_dir, args.local_target, args.kg_tenant_id
+                        ),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
+                return
+            pointer = publish_local_graph(
+                args.graph_artifact_dir, args.local_target, args.kg_tenant_id
+            )
+            print(json.dumps(pointer, ensure_ascii=False, sort_keys=True))
             return
-        pointer = publish_local_graph(args.graph_artifact_dir, args.local_target, args.kg_tenant_id)
+        if not args.gcs_bucket:
+            parser.error("--gcs-bucket is required for --publish-backend gcs")
+        if args.dry_run:
+            print(
+                json.dumps(
+                    gcs_publication_dry_run(
+                        args.graph_artifact_dir,
+                        bucket_name=args.gcs_bucket,
+                        tenant_id=args.kg_tenant_id,
+                        prefix=args.gcs_prefix,
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return
+        from google.cloud import firestore
+
+        prepared = prepare_publication(args.graph_artifact_dir, args.kg_tenant_id)
+        lease = FirestorePipelineLease(firestore.Client())
+        handle = lease.acquire(
+            args.kg_tenant_id,
+            prepared.run_id,
+            ttl_seconds=args.lease_ttl_seconds,
+        )
+        try:
+            pointer = publish_gcs_graph(
+                args.graph_artifact_dir,
+                bucket_name=args.gcs_bucket,
+                tenant_id=args.kg_tenant_id,
+                lease=lease,
+                lease_handle=handle,
+                prefix=args.gcs_prefix,
+            )
+        finally:
+            lease.release(handle)
         print(json.dumps(pointer, ensure_ascii=False, sort_keys=True))
-        # TODO(adr-0020-cloud): replace this local-only adapter with GCS immutable
-        # publication and lease-controlled current.json once cloud infrastructure exists.
         return
 
     if args.stage == "train-naive-bayes":
@@ -239,6 +320,49 @@ def main() -> None:
             print(json.dumps({"cases": sorted(directories), "publication": "not_requested"}, sort_keys=True))
             return
         print(json.dumps(build_suite(directories, args.suite_output_dir, args.run_id), ensure_ascii=False, sort_keys=True))
+        return
+
+    if args.stage == "report-metrics":
+        if args.kdd_artifact_dir is None or args.supervised_suite_artifact_dir is None:
+            parser.error(
+                "--kdd-artifact-dir and --supervised-suite-artifact-dir are required "
+                "for --stage report-metrics"
+            )
+        case_dirs = {
+            "C1": args.c1_artifact_dir,
+            "C2": args.c2_artifact_dir,
+            "C3": args.c3_artifact_dir,
+            "C4": args.c4_artifact_dir,
+            "C5": args.c5_artifact_dir,
+        }
+        if any(value is None for value in case_dirs.values()):
+            parser.error("all --cN-artifact-dir values are required for --stage report-metrics")
+        output_dir = args.report_output_dir / args.run_id
+        if args.dry_run:
+            print(
+                json.dumps(
+                    metrics_dry_run_plan(
+                        run_id=args.run_id,
+                        kdd_dir=args.kdd_artifact_dir,
+                        suite_dir=args.supervised_suite_artifact_dir,
+                        case_dirs=case_dirs,
+                        graph_dir=args.graph_artifact_dir,
+                        output_dir=output_dir,
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return
+        summary = run_report(
+            run_id=args.run_id,
+            output_dir=output_dir,
+            kdd_dir=args.kdd_artifact_dir,
+            suite_dir=args.supervised_suite_artifact_dir,
+            case_dirs=case_dirs,
+            graph_dir=args.graph_artifact_dir,
+        )
+        print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
         return
 
     selected = STAGES if args.stage == "all" else (args.stage,)

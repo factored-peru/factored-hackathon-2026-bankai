@@ -310,4 +310,51 @@ port = 9001
 			),
 		).toThrow("SVC-CORE-9013");
 	});
+
+	test("GCS KG bucket defaults empty and fails closed in prod without GCS_ENABLED", () => {
+		const defaults = envSchema.parse({});
+		expect(defaults.GCS_GRAPH_BUCKET).toBe("");
+		expect(defaults.GCS_GRAPH_ARTIFACT_PREFIX).toBe("");
+		expect(defaults.GCS_GRAPH_TENANT_ID).toBe("demo-bankai");
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					APP_ENV: "prod",
+					SERVICE_TOKEN: "service-token",
+					GCS_GRAPH_BUCKET: "kg-artifacts",
+					GCS_ENABLED: false,
+				}),
+			),
+		).toThrow("SVC-CORE-9014");
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					APP_ENV: "prod",
+					SERVICE_TOKEN: "service-token",
+					GCS_ENABLED: true,
+					GCS_GRAPH_BUCKET: "kg-artifacts",
+					KG_RAG_LOCAL_ENABLED: true,
+				}),
+			),
+		).toThrow("SVC-CORE-9012");
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					GCS_GRAPH_BUCKET: "kg-artifacts",
+					GCS_GRAPH_TENANT_ID: "   ",
+				}),
+			),
+		).toThrow("SVC-CORE-9016");
+		expect(
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					APP_ENV: "prod",
+					SERVICE_TOKEN: "service-token",
+					GCS_ENABLED: true,
+					GCS_GRAPH_BUCKET: "kg-artifacts",
+					GCS_GRAPH_TENANT_ID: "demo-bankai",
+				}),
+			).GCS_GRAPH_BUCKET,
+		).toBe("kg-artifacts");
+	});
 });

@@ -12,7 +12,7 @@ clasificación de una persona como fraudulenta.
 Se adopta la separación conceptual del módulo de referencia FuTour:
 
 - una predicción probabilística responde una variable objetivo explícita;
-- Apriori y FP-Growth describen asociaciones, no causalidad ni probabilidad de
+- Apriori, FP-Growth y Eclat describen asociaciones, no causalidad ni probabilidad de
   un caso individual;
 - un grafo futuro solo materializará entidades normalizadas, reglas
   versionadas, métricas y procedencia publicadas por el pipeline.

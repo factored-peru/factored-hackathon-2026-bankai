@@ -122,7 +122,7 @@ class KddArtifactReader:
 
 
 class KddConsensusValidator:
-    """Validate only rules independently emitted by Apriori and FP-Growth."""
+    """Validate only rules independently emitted by Apriori, FP-Growth and Eclat."""
 
     def collect(self, artifacts: KddArtifacts) -> tuple[ConsensusRule, ...]:
         definitions = {definition.name: definition for definition in population_definitions()}
@@ -131,14 +131,23 @@ class KddConsensusValidator:
             result = artifacts.results[population]
             catalog = _catalog_for(result, definition)
             rule_sets = result.get("rules")
-            if not isinstance(rule_sets, Mapping) or set(rule_sets) != {"apriori", "fpgrowth"}:
-                raise GraphInputError(f"{population} must contain Apriori and FP-Growth rules")
-            apriori = _indexed_rules(rule_sets["apriori"], definition, catalog)
-            fpgrowth = _indexed_rules(rule_sets["fpgrowth"], definition, catalog)
-            for key in sorted(apriori.keys() & fpgrowth.keys()):
-                left, right = apriori[key], fpgrowth[key]
-                if not _same_metrics(left, right):
+            if not isinstance(rule_sets, Mapping):
+                raise GraphInputError(f"{population} must contain rule sets")
+            required = {"apriori", "fpgrowth", "eclat"}
+            if not required <= set(rule_sets):
+                raise GraphInputError(
+                    f"{population} must contain Apriori, FP-Growth and Eclat rules"
+                )
+            indexed = {
+                algorithm: _indexed_rules(rule_sets[algorithm], definition, catalog)
+                for algorithm in sorted(required)
+            }
+            shared = set.intersection(*(set(index) for index in indexed.values()))
+            for key in sorted(shared):
+                metrics = [indexed[algorithm][key] for algorithm in sorted(required)]
+                if not all(_same_metrics(metrics[0], other) for other in metrics[1:]):
                     raise GraphInputError(f"{population} consensus rule has divergent metrics")
+                left = metrics[0]
                 rules.append(
                     ConsensusRule(
                         population=population,
@@ -203,7 +212,7 @@ class KddGraphCompiler:
                 "rule",
                 population=rule.population,
                 antecedent_count=len(rule.antecedents),
-                algorithm_consensus="apriori_fpgrowth",
+                algorithm_consensus="apriori_fpgrowth_eclat",
             )
             for item in rule.antecedents:
                 add_edge(_value_id(rule.population, item), rule_id, "antecedent")
@@ -211,7 +220,7 @@ class KddGraphCompiler:
                 rule_id,
                 target_id,
                 "predicts",
-                algorithms=["apriori", "fpgrowth"],
+                algorithms=["apriori", "fpgrowth", "eclat"],
                 support=rule.support,
                 confidence=rule.confidence,
                 lift=rule.lift,

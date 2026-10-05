@@ -43,6 +43,12 @@ resource "google_project_iam_member" "backend_firestore_user" {
   member  = "serviceAccount:${google_service_account.backend.email}"
 }
 
+resource "google_project_iam_member" "pipeline_firestore_user" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.pipeline.email}"
+}
+
 resource "google_cloud_run_v2_service" "backend" {
   name     = "${var.name_prefix}-backend"
   location = var.region
@@ -59,7 +65,9 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       dynamic "env" {
-        for_each = var.backend_environment
+        for_each = merge(var.backend_environment, {
+          GCS_GRAPH_BUCKET = google_storage_bucket.kg_artifacts.name
+        })
         content {
           name  = env.key
           value = env.value
@@ -89,7 +97,9 @@ resource "google_cloud_run_v2_job" "pipeline" {
         args  = ["--stage", "all"]
 
         dynamic "env" {
-          for_each = var.pipeline_environment
+          for_each = merge(var.pipeline_environment, {
+            GCS_GRAPH_BUCKET = google_storage_bucket.kg_artifacts.name
+          })
           content {
             name  = env.key
             value = env.value

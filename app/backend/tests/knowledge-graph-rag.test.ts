@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { encode } from "@msgpack/msgpack";
 import type { SessionContext } from "../src/domain/session.js";
-import { GcsKnowledgeGraphArtifactRepository } from "../src/integrations/kg/gcs-knowledge-graph-artifact-repository.js";
+import {
+	createGcsKnowledgeGraphRuntime,
+	GcsKnowledgeGraphArtifactRepository,
+	normalizeArtifactPrefix,
+} from "../src/integrations/kg/gcs-knowledge-graph-artifact-repository.js";
 import { LocalKnowledgeGraphArtifactRepository } from "../src/integrations/kg/local-knowledge-graph-runtime.js";
 import { KnowledgeGraphRag } from "../src/services/retrieval/knowledge-graph-rag.js";
 
@@ -290,6 +294,49 @@ describe("LocalKnowledgeGraphArtifactRepository", () => {
 			expect(
 				await repository.load({ session, traceId: "trace-gcs" }),
 			).toMatchObject({ status: "ready" });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("applies the configured GCS artifact prefix and factory wiring", async () => {
+		expect(normalizeArtifactPrefix("knowledge-graph")).toBe("knowledge-graph/");
+		expect(normalizeArtifactPrefix("")).toBe("");
+		const root = await fixture();
+		try {
+			const requested: string[] = [];
+			const runtime = createGcsKnowledgeGraphRuntime(
+				{
+					GCS_ENABLED: true,
+					GCS_GRAPH_BUCKET: "kg-artifacts",
+					GCS_GRAPH_ARTIFACT_PREFIX: "knowledge-graph",
+					GCS_GRAPH_TENANT_ID: "demo-bankai",
+				},
+				{
+					bucket: {
+						file(name: string) {
+							requested.push(name);
+							const relative = name.replace(/^knowledge-graph\//, "");
+							return {
+								download: async () => [await readFile(join(root, relative))],
+							};
+						},
+					},
+				},
+			);
+			expect(
+				await runtime.catalog.load({ session, traceId: "trace-prefix" }),
+			).toMatchObject({ status: "ready" });
+			expect(requested[0]).toBe("knowledge-graph/demo-bankai/current.json");
+			expect(runtime.rag).toBeInstanceOf(KnowledgeGraphRag);
+			expect(() =>
+				createGcsKnowledgeGraphRuntime({
+					GCS_ENABLED: false,
+					GCS_GRAPH_BUCKET: "kg-artifacts",
+					GCS_GRAPH_ARTIFACT_PREFIX: "",
+					GCS_GRAPH_TENANT_ID: "demo-bankai",
+				}),
+			).toThrow("kg_gcs_runtime_disabled");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

@@ -5,15 +5,21 @@ import unittest
 
 import pandas as pd
 
+from bankai_pipeline.frequent_itemsets import apriori_hybrid, eclat, itemset_keys
 from bankai_pipeline.kdd import (
     KddConfig,
     build_item_matrix,
     compare_rule_sets,
+    consensus_rules,
     deduplicate_redundant_rules,
+    drop_han_redundant_rules,
     dry_run_plan,
+    evaluate_rules_on_matrix,
+    mine_frequent_itemsets,
     mine_rules,
     population_definitions,
     refine_mined_rules,
+    temporal_train_holdout_split,
 )
 
 
@@ -26,7 +32,7 @@ def config(*, max_categorical_cardinality: int = 100) -> KddConfig:
         output_dir=Path(tempfile.gettempdir()) / "bankai-kdd-test",
         maximum_bytes_billed=2_000_000_000,
         max_rows=100_000,
-        algorithms=("apriori", "fpgrowth"),
+        algorithms=("apriori", "fpgrowth", "eclat", "apriori_hybrid"),
         min_support=0.20,
         min_confidence=0.60,
         min_lift=1.10,
@@ -127,7 +133,39 @@ class KddTest(unittest.TestCase):
             deduplicate_redundant_rules(rules[:2])[0]["antecedents"], ["priority=HIGH"]
         )
 
-    def test_apriori_and_fpgrowth_produce_same_target_rule_keys(self) -> None:
+    def test_han_filter_drops_near_duplicate_descendant_rules(self) -> None:
+        rules = [
+            {
+                "antecedents": ["category=TRANSACTIONS"],
+                "consequent": "status=IN_PROCESS",
+                "support": 0.4,
+                "confidence": 0.82,
+                "lift": 1.2,
+            },
+            {
+                "antecedents": ["subcategory=CARGO_NO_RECONOCIDO"],
+                "consequent": "status=IN_PROCESS",
+                "support": 0.1,
+                "confidence": 0.84,
+                "lift": 1.25,
+            },
+            {
+                "antecedents": ["subcategory=FRAUDE"],
+                "consequent": "status=IN_PROCESS",
+                "support": 0.05,
+                "confidence": 0.95,
+                "lift": 1.4,
+            },
+        ]
+        filtered = drop_han_redundant_rules(
+            rules, (("category", "subcategory"),), epsilon=0.05
+        )
+        antecedents = {tuple(rule["antecedents"]) for rule in filtered}
+        self.assertIn(("category=TRANSACTIONS",), antecedents)
+        self.assertNotIn(("subcategory=CARGO_NO_RECONOCIDO",), antecedents)
+        self.assertIn(("subcategory=FRAUDE",), antecedents)
+
+    def test_consensus_miners_and_hybrid_match_apriori_itemsets(self) -> None:
         definition = population_definitions()[0]
         frame = pd.DataFrame(
             {
@@ -147,18 +185,92 @@ class KddTest(unittest.TestCase):
         )
         matrix, _ = build_item_matrix(frame, definition, config())
         settings = config()
+        apriori_itemsets = mine_frequent_itemsets(matrix, "apriori", settings)
+        fpgrowth_itemsets = mine_frequent_itemsets(matrix, "fpgrowth", settings)
+        eclat_itemsets = mine_frequent_itemsets(matrix, "eclat", settings)
+        hybrid_itemsets = mine_frequent_itemsets(matrix, "apriori_hybrid", settings)
+
+        self.assertEqual(itemset_keys(apriori_itemsets), itemset_keys(fpgrowth_itemsets))
+        self.assertEqual(itemset_keys(apriori_itemsets), itemset_keys(eclat_itemsets))
+        self.assertEqual(itemset_keys(apriori_itemsets), itemset_keys(hybrid_itemsets))
+        self.assertEqual(
+            itemset_keys(eclat(matrix, min_support=0.2, use_colnames=True, max_len=4)),
+            itemset_keys(apriori_hybrid(matrix, min_support=0.2, use_colnames=True, max_len=4)),
+        )
+
         apriori = mine_rules(matrix, definition.target_column, "apriori", settings)
         fpgrowth = mine_rules(matrix, definition.target_column, "fpgrowth", settings)
-
+        eclat_rules = mine_rules(matrix, definition.target_column, "eclat", settings)
         self.assertTrue(apriori)
-        self.assertEqual(
-            {(tuple(rule["antecedents"]), rule["consequent"]) for rule in apriori},
-            {(tuple(rule["antecedents"]), rule["consequent"]) for rule in fpgrowth},
+        keys = {(tuple(rule["antecedents"]), rule["consequent"]) for rule in apriori}
+        self.assertEqual(keys, {(tuple(rule["antecedents"]), rule["consequent"]) for rule in fpgrowth})
+        self.assertEqual(keys, {(tuple(rule["antecedents"]), rule["consequent"]) for rule in eclat_rules})
+        comparison = compare_rule_sets(
+            {"apriori": apriori, "fpgrowth": fpgrowth, "eclat": eclat_rules}
         )
-        self.assertEqual(
-            compare_rule_sets({"apriori": apriori, "fpgrowth": fpgrowth})["jaccard"],
-            1.0,
+        self.assertEqual(comparison["comparison"], "apriori_fpgrowth_eclat")
+        self.assertEqual(comparison["triple_jaccard"], 1.0)
+
+    def test_temporal_holdout_split_and_rule_stability(self) -> None:
+        import polars as pl
+
+        definition = population_definitions()[0]
+        frame = pl.DataFrame(
+            {
+                "transaction_id": [f"t{i}" for i in range(10)],
+                "transaction_date": [
+                    datetime(2023, 1, 15, tzinfo=timezone.utc),
+                    datetime(2023, 2, 15, tzinfo=timezone.utc),
+                    datetime(2023, 3, 15, tzinfo=timezone.utc),
+                    datetime(2023, 4, 15, tzinfo=timezone.utc),
+                    datetime(2023, 5, 15, tzinfo=timezone.utc),
+                    datetime(2023, 6, 15, tzinfo=timezone.utc),
+                    datetime(2023, 7, 15, tzinfo=timezone.utc),
+                    datetime(2023, 8, 15, tzinfo=timezone.utc),
+                    datetime(2023, 11, 15, tzinfo=timezone.utc),
+                    datetime(2023, 12, 15, tzinfo=timezone.utc),
+                ],
+                "transaction_status": ["DECLINED"] * 6 + ["APPROVED"] * 4,
+                "transaction_type": ["PURCHASE"] * 10,
+                "transaction_category": ["CARD"] * 10,
+                "channel": ["ONLINE"] * 6 + ["BRANCH"] * 4,
+                "merchant_category": ["RETAIL"] * 10,
+                "currency": ["PEN"] * 10,
+                "response_code": [51] * 6 + [0] * 4,
+                "is_fraud": [True] * 6 + [False] * 4,
+                "amount": [20.0] * 10,
+                "fraud_score": [0.9] * 6 + [0.1] * 4,
+            }
         )
+        train, holdout, meta = temporal_train_holdout_split(
+            frame,
+            "transaction_date",
+            datetime(2023, 1, 1, tzinfo=timezone.utc),
+            datetime(2024, 1, 1, tzinfo=timezone.utc),
+            0.20,
+        )
+        self.assertGreater(train.height, 0)
+        self.assertGreater(holdout.height, 0)
+        self.assertEqual(meta["train_rows"] + meta["holdout_rows"], frame.height)
+
+        settings = config()
+        train_matrix, _ = build_item_matrix(train, definition, settings)
+        holdout_matrix, _ = build_item_matrix(holdout, definition, settings)
+        holdout_matrix = holdout_matrix.reindex(columns=train_matrix.columns, fill_value=False)
+        apriori = mine_rules(train_matrix, definition.target_column, "apriori", settings)
+        fpgrowth = mine_rules(train_matrix, definition.target_column, "fpgrowth", settings)
+        eclat_rules = mine_rules(train_matrix, definition.target_column, "eclat", settings)
+        consensus = consensus_rules(
+            {"apriori": apriori, "fpgrowth": fpgrowth, "eclat": eclat_rules}
+        )
+        evaluation = evaluate_rules_on_matrix(
+            consensus,
+            holdout_matrix,
+            min_lift=settings.min_lift,
+            max_confidence_delta=0.5,
+        )
+        self.assertEqual(evaluation["rule_count"], len(consensus))
+        self.assertIn("stable_fraction", evaluation)
 
     def test_dry_run_plan_has_no_graph_stage(self) -> None:
         plan = dry_run_plan(config())
@@ -170,4 +282,6 @@ class KddTest(unittest.TestCase):
         complaints = plan["populations"][1]
         self.assertEqual(complaints["row_filter_sql"], "`category` = 'Transactions'")
         self.assertIn("resolution_days", complaints["leakage_excluded"])
+        self.assertEqual(plan["validation"]["enabled"], True)
+        self.assertEqual(plan["validation"]["holdout_fraction"], 0.2)
         self.assertEqual(plan["graph_compilation"], "not_requested")

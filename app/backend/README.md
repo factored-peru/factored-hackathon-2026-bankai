@@ -13,8 +13,10 @@ API y control plane online de Dispute Transaction Support.
 - BigQuery para Structured RAG y GCS para artefactos versionados de KG-RAG.
 
 La recuperación vectorial está desconectada: no existe corpus ni vector store
-autorizado. Structured RAG y KG-RAG usan catálogos cerrados y fallan cerrados
-hasta que sus adaptadores se implementen.
+autorizado. Structured RAG y KG-RAG usan catálogos cerrados y fallan cerrados.
+El backend lee el grafo publicado en GCS con el mismo contrato que el pipeline
+(`GCS_GRAPH_BUCKET` + `{tenant}/current.json`); el chat baseline aún no inyecta
+ese runtime en el control plane.
 
 Structured RAG ya dispone del adaptador BigQuery, pero el catálogo de producción
 permanece vacío hasta aprobar vistas curadas y sus contratos. El adaptador usa

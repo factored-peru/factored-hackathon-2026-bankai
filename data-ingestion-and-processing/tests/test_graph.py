@@ -28,7 +28,8 @@ def rule(antecedents, consequent, support=0.4, confidence=0.8, lift=1.6):
     }
 
 
-def population_result(target, features, apriori, fpgrowth):
+def population_result(target, features, apriori, fpgrowth, eclat=None):
+    eclat_rules = eclat if eclat is not None else apriori
     return {
         "quality_profile": {"row_count": 10},
         "feature_catalog": {
@@ -36,8 +37,8 @@ def population_result(target, features, apriori, fpgrowth):
             "features": sorted(features),
             "excluded_high_cardinality_columns": [],
         },
-        "rules": {"apriori": apriori, "fpgrowth": fpgrowth},
-        "comparison": {"comparison": "apriori_vs_fpgrowth"},
+        "rules": {"apriori": apriori, "fpgrowth": fpgrowth, "eclat": eclat_rules},
+        "comparison": {"comparison": "apriori_fpgrowth_eclat"},
     }
 
 
@@ -129,7 +130,7 @@ class GraphCompileTest(unittest.TestCase):
             self.assertEqual(direct_value_targets, [])
             predictions = [edge for edge in payload["edges"] if edge["relation"] == "predicts"]
             self.assertEqual(len(predictions), 2)
-            self.assertEqual(predictions[0]["attributes"]["algorithms"], ["apriori", "fpgrowth"])
+            self.assertEqual(predictions[0]["attributes"]["algorithms"], ["apriori", "fpgrowth", "eclat"])
 
     def test_output_is_deterministic_for_same_kdd_input(self) -> None:
         with TemporaryDirectory() as temporary:

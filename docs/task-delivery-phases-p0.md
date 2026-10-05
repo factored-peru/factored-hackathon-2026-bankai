@@ -112,7 +112,7 @@ Estado de partida (auditoría): implementación local en progreso; DoD cloud abi
 | --- | --- |
 | Tareas | P0-11, P0-12, P0-13, P0-14, P0-15, P0-28, P0-45, P0-46 |
 | Precondiciones | Dataset curado de Fase 2; job/publicación de Fase 3 disponible o dry-run equivalente autorizado; ADR 0011 / 0020. |
-| Entregables | Documentación CRISP-DM/KDD; descubrimiento KDD y Naive Bayes exploratorio con splits sin leakage, métricas, exclusiones y provenance agregado; grafo sólo con asociaciones corroboradas por Apriori y FP-Growth; `graph-vN.msgpack`, manifiesto y `current.json` en GCS (checksum, schema, tenant, catálogo); lector KG-RAG habilitado sólo tras validaciones. |
+| Entregables | Documentación CRISP-DM/KDD; descubrimiento KDD y Naive Bayes exploratorio con splits sin leakage, métricas, exclusiones y provenance agregado; grafo sólo con asociaciones corroboradas por Apriori, FP-Growth y Eclat; `graph-vN.msgpack`, manifiesto y `current.json` en GCS (checksum, schema, tenant, catálogo); lector KG-RAG habilitado sólo tras validaciones. |
 | Validación | Sin transacciones, reclamos, clientes, textos o scores individuales en el grafo; prueba Bun/Zod de lectura; rechazo de artefactos corruptos; C6–C8 siguen bloqueados. |
 | Criterio de salida | C1–C5 exploratorios disponibles como evidencia de asociaciones. Publicación GCS y catálogo cerrado verificados antes de cerrar P0-15/P0-28/P0-46. |
 

@@ -84,27 +84,40 @@ Cloud Scheduler (15 min; lookback 30 min)
   separados. C3 usa muestreo estratificado ponderado y compara contra el score
   existente; C4 mantiene targets independientes; C5 usa la escala ordinal
   observada. `evaluate-supervised-suite` sólo consolida manifests y bloqueos
-  de C6–C8. Ninguno publica, altera el backend o habilita automatización.
+  de C6–C8. `report-metrics` genera un rollup local de interpretabilidad
+  (association vs supervised, conviction/leverage derivadas, gaps de CV) sin
+  reentrenar ni consultar BigQuery. Ninguno publica, altera el backend o
+  habilita automatización.
 - KDD y Naive Bayes son evidencia exploratoria y provenance. No autorizan
   acciones, no cambian policy ni sustituyen JEV o validación determinista del
   backend.
 - `compile-graph` v1 consume exclusivamente los artefactos KDD locales de un
   `run-id`. Valida los catálogos saneados y conserva solo reglas coincidentes
-  de Apriori y FP-Growth con iguales métricas de soporte, confianza y lift.
+  de Apriori, FP-Growth y Eclat con iguales métricas de soporte, confianza y
+  lift. AprioriHybrid se ejecuta como control de paridad/rendimiento frente a
+  Apriori y no aporta un cuarto voto. K2 permanece fuera del grafo asociativo.
   Materializa nodos de población, feature, valor, regla y target; una regla es
   un nodo para preservar la conjunción de antecedentes. Escribe de forma
   determinista `graph-v1.msgpack` y `graph-manifest.json` bajo artefactos
   locales ignorados por Git. No vuelve a consultar BigQuery, no incorpora filas
   curadas, PII, texto, IDs ni relaciones heurísticas, y no publica el grafo.
-- `publish` permanece pendiente: validará schema, manifest y checksum,
-  publicará `graph-vN.msgpack` y actualizará `current.json` sólo después de
-  una publicación completa y verificable.
-- Mientras la infraestructura GCS y el lease Firestore estén pendientes,
-  `publish --local-target` sólo emula localmente el paquete inmutable y su
-  `current.json` para `demo-bankai`. No invoca AWS, GCS, BigQuery, Scheduler,
-  Eventarc ni Cloud Tasks. `TODO(adr-0020-cloud)`: el publicador productivo
-  sustituirá ese adaptador por GCS más lease sin cambiar el contrato de
-  manifiesto/checksum que consume KG-RAG.
+- `publish` valida schema, manifest y checksum, publica el paquete inmutable
+  `graph-v1.msgpack` + `graph-manifest.json` + `kg-operation-catalog.json` y
+  actualiza `current.json` sólo después de una publicación completa y
+  verificable. El adaptador local (`--publish-backend local --local-target`)
+  emula el contrato para `demo-bankai`. El adaptador GCS
+  (`--publish-backend gcs --gcs-bucket`) sube el mismo contrato a
+  `{tenant}/{run_id}/*` y exige un lease Firestore
+  (`pipeline_leases/{tenant_id}`) antes de escribir `current.json`. Dry-run no
+  escribe local ni cloud. La ejecución cloud real sigue requiriendo
+  autorización explícita, credenciales ADC y el bucket/IAM desplegados; no se
+  asume `terraform apply`.
+- `kdd` mina sobre la población completa de la ventana (sin subsample cuando
+  `max_rows` cubre la población) y, con `[kdd.validation]` habilitado (default),
+  parte temporalmente train/holdout, mina en train y recalcula
+  support/confidence/lift en holdout. `n_folds > 1` añade estabilidad por
+  bloques temporales. Los artefactos viven en `validation/`; el consenso que
+  alimenta `compile-graph` permanece el de train.
 
 Tras una carga raw confirmada, `ingestion-worker` encola `pipeline-refresh`.
 El orquestador inicia el Cloud Run Job con un nuevo `run-id`; el job adquiere un
@@ -123,9 +136,12 @@ Storage Transfer Service, GCS, BigQuery, Firestore y Cloud Run Job.
 BigQuery es el único origen estructurado del backend; GCS entrega únicamente
 artefactos publicados y validados conforme a ADR 0011. El backend Bun nunca
 recibe eventos S3/GCS ni accede a S3. El compilador local no habilita KG-RAG ni
-es una publicación. La implementación de publicación, funciones Python, colas,
-imagen, Scheduler y Terraform permanece pendiente en las tareas P0 asociadas;
-ninguna de estas capacidades se asume desplegada.
+es una publicación. La lógica de publicación GCS + lease está en el pipeline
+Python; el backend lee el mismo contrato vía `GcsKnowledgeGraphArtifactRepository`
+(`GCS_GRAPH_BUCKET` / tenant / prefix, inyectados por Terraform desde
+`kg_artifacts`). Transfer/load cloud, imagen, Scheduler, Eventarc y el
+`terraform apply` del bucket/IAM siguen pendientes de autorización explícita y
+no se asumen desplegados.
 
 ## References
 
