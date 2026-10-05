@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parsePipelineRunRecord } from "../src/services/evaluation/ab-contracts.js";
 import {
 	evaluateTechnicalCompleteness,
 	runAbComparison,
 } from "../src/services/evaluation/ab-comparison.js";
+import { parsePipelineRunRecord } from "../src/services/evaluation/ab-contracts.js";
 import { BaselineComparableRunner } from "../src/services/evaluation/baseline-comparable-runner.js";
 import { ControlledComparableRunner } from "../src/services/evaluation/controlled-comparable-runner.js";
 import { SyntheticTaskCompletionJudge } from "../src/services/evaluation/task-completion-judge.js";
@@ -16,9 +16,9 @@ import {
 } from "./fixtures/ab-evaluation-scenarios.js";
 
 describe("local A/B evaluation", () => {
-	test("exposes phase-1 structured plans and phase-2 research cases", () => {
+	test("exposes phase-1 structured plans and phase-2 ADR 0004 casuistics", () => {
 		expect(selectAbScenarios("phase-1")).toHaveLength(3);
-		expect(selectAbScenarios("phase-2").length).toBeGreaterThanOrEqual(8);
+		expect(selectAbScenarios("phase-2").length).toBeGreaterThanOrEqual(20);
 		expect(abEvaluationScenarios.map((s) => s.expectedQueryPlanId)).toEqual(
 			expect.arrayContaining([
 				"customer_products",
@@ -26,6 +26,17 @@ describe("local A/B evaluation", () => {
 				"recent_transactions",
 			]),
 		);
+		expect(
+			abEvaluationScenarios.some((s) =>
+				s.researchRef?.includes("adr-0004:adversarial-autoridad"),
+			),
+		).toBe(true);
+		expect(
+			abEvaluationScenarios.some((s) => s.prompt.includes("lista en Python")),
+		).toBe(true);
+		expect(
+			abEvaluationScenarios.some((s) => s.prompt.includes("gerente del banco")),
+		).toBe(true);
 	});
 
 	test("rejects pipeline records that carry prompts or SQL", () => {
@@ -106,8 +117,7 @@ describe("local A/B evaluation", () => {
 			for (const scenario of selectAbScenarios("phase-1")) {
 				const controlled = runs.find(
 					(r) =>
-						r.scenarioId === scenario.scenarioId &&
-						r.pipeline === "controlled",
+						r.scenarioId === scenario.scenarioId && r.pipeline === "controlled",
 				);
 				expect(controlled).toBeDefined();
 				if (!controlled) continue;

@@ -1,5 +1,25 @@
 import { z } from "zod";
 
+export const controlledModeSchema = z.enum([
+	"database_ok",
+	"rag_ok",
+	"llm_ok",
+	"ood",
+	"deny",
+	"hitl",
+	"guardrail_block",
+	"clarify",
+	"jev_unavailable",
+	"jev_low_confidence",
+	"rag_injection",
+	"cross_tenant",
+	"approval_replay",
+	"session_rotated",
+	"raw_pii",
+	"final_guardrail",
+]);
+export type ControlledMode = z.infer<typeof controlledModeSchema>;
+
 /** Prompt-bearing A/B scenario; never copied into PipelineRunRecord or telemetry. */
 export const evaluationScenarioSchema = z
 	.object({
@@ -15,6 +35,7 @@ export const evaluationScenarioSchema = z
 			"ood",
 			"deny",
 			"hitl",
+			"clarify",
 		]),
 		expectedQueryPlanId: z.string().min(1).nullable(),
 		expectedTerminalStatus: z.enum([
@@ -25,6 +46,7 @@ export const evaluationScenarioSchema = z
 			"pending_clarification",
 		]),
 		expectedRetrieval: z.boolean(),
+		controlledMode: controlledModeSchema,
 		/** Controlled must invoke these gates; baseline is measured separately. */
 		controlledExpectsGates: z.object({
 			controlPlane: z.boolean(),
@@ -71,6 +93,7 @@ export const pipelineRunRecordSchema = z
 			"ood",
 			"deny",
 			"hitl",
+			"clarify",
 			"unknown",
 		]),
 		queryPlanId: z.string().min(1).nullable(),

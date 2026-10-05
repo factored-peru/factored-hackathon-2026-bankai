@@ -39,8 +39,7 @@ export function evaluateTechnicalCompleteness(
 		);
 		push(
 			"route_matches",
-			record.route === scenario.expectedRoute ||
-				(scenario.expectedRoute === "ood" && record.route === "ood"),
+			record.route === scenario.expectedRoute,
 			"route_mismatch",
 		);
 		push(
