@@ -137,4 +137,30 @@ describe("agent evaluators", () => {
 		expect(JSON.stringify(batch)).not.toContain("synthetic-");
 		expect(JSON.stringify(batch)).not.toContain("¿");
 	});
+
+	test("pins KG C1–C5 fixture ids and core count without question text", () => {
+		const requiredKgCaseIds = [
+			"kg-case-c1-sla-scope",
+			"kg-case-c2-resolution-scope",
+			"kg-case-c3-fraud-signal-scope",
+			"kg-case-c4-followup-scope",
+			"kg-case-c5-satisfaction-scope",
+		] as const;
+		expect(knowledgeGraphQuestionGoldens.map((g) => g.fixtureId)).toEqual([
+			...requiredKgCaseIds,
+		]);
+		expect(
+			evaluationGoldens.length - knowledgeGraphQuestionGoldens.length,
+		).toBe(48);
+		const ids = new Set(evaluationGoldens.map((g) => g.fixtureId));
+		for (const id of requiredKgCaseIds) {
+			expect(ids.has(id)).toBe(true);
+		}
+		expect(
+			knowledgeGraphQuestionGoldens.every((g) => g.question.includes("caso C")),
+		).toBe(true);
+		const batch = runEvaluationGoldenSet();
+		const { reports: _reports, ...summary } = batch;
+		expect(JSON.stringify(summary)).not.toContain("caso C");
+	});
 });

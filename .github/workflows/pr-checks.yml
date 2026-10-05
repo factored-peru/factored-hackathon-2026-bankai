@@ -42,6 +42,13 @@ jobs:
           SESSION_STORE_ENABLED: "false"
           LLM_CACHE_ENABLED: "false"
         run: bun test
+      - name: Evaluation matrix gate (48 core + 5 KG C1–C5)
+        env:
+          SESSION_STORE_ENABLED: "false"
+          LLM_CACHE_ENABLED: "false"
+        run: |
+          bun run eval:run
+          bun run eval:gate
       - name: Seed Firestore demo identity (dry-run)
         run: bun run seed:firestore-demo-identity -- --dry-run --fixture
 

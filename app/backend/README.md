@@ -80,9 +80,10 @@ bun run check
 | Contrato                 | `bun run spec:check`                               | Verifica OpenAPI sin modificar fuentes.                    |
 | Calidad                  | `bun test`, `bun run check-types`, `bun run check` | Ejecuta pruebas, tipos y Biome de sólo comprobación.       |
 | Matriz de agente         | `bun run agent:matrix`                             | Ejecuta la simulación declarada para variantes del agente. |
-| Evaluación de goldens    | `bun run eval:run`                                 | Calcula la matriz determinista e imprime un resumen sin contenido; no envía nada ni toca la red. |
+| Evaluación de goldens    | `bun run eval:run`                                 | Calcula la matriz determinista (48 core + 5 extensiones KG C1–C5) e imprime un resumen sin contenido; no envía nada ni toca la red. Gate de PR vía `bun run eval:gate` (contrato de conteos/IDs; scores siguen informational). |
+| Gate de matriz P0        | `bun run eval:gate`                                | Falla sólo si se rompe el contrato 48+5/53 o faltan `kg-case-c1`…`c5`; no bloquea por `failedCount` informativo (ADR 0015). |
 | Chat de prueba           | `bun run chat:try -- --message "hola"`             | Cliente de consola del WebSocket de un backend ya levantado (local, Docker o desplegado con `--allow-remote`). No inicia nada; el backend al que apunta puede llamar a la nube. |
-| Evaluación con emisión   | `bun run eval:run -- --emit`                       | Además envía un span por fixture a Langfuse Cloud US y cada resultado a BigQuery, según lo configurado. Sale con código 1 si un canal falla o no hay ninguno configurado. Alcanza la nube: requiere autorización explícita y credenciales fuera de Git. |
+| Evaluación con emisión   | `bun run eval:run -- --emit`                       | Además envía un span por fixture a Langfuse Cloud US y cada resultado a BigQuery, según lo configurado. Sale con código 1 si un canal falla o no hay ninguno configurado. Alcanza la nube: requiere autorización explícita y credenciales fuera de Git. No forma parte del gate de PR. |
 | Seed identidad demo      | `bun run seed:firestore-demo-identity`             | Dry-run del plan `user_profiles` + bindings (sin GCP). `--execute` escribe Firestore y exige autorización; ver `docs/firestore-collections.md`. |
 
 ### Probar el chat a mano, en local o en Docker

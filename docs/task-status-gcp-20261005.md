@@ -22,6 +22,10 @@ contenido de Firestore, resultados BigQuery ni valores de secretos.
   `workflow_dispatch`); índice `conversation_snapshots` en
   `firestore.indexes.json`; tests SessionManager/perfiles + smoke demo
   documentado. **Sin** `AGENTIC_CHAT_ENABLED`, **sin** terraform apply.
+- P0-48: gate CI `bun run eval:run` + `bun run eval:gate` fija
+  **48 core + 5 extensiones KG C1–C5** (contrato informational). La matriz son
+  trayectorias/componentes sintéticos; las 5 preguntas NL KG no son corpus de
+  chat de producto (eso queda en P0-39 / baseline humana).
 
 ## Recursos confirmados
 
@@ -66,7 +70,7 @@ contenido de Firestore, resultados BigQuery ni valores de secretos.
 | Datos y preparación | **COMPLETED** P0-06–10 y P0-44. |
 | KDD y grafo | **COMPLETED** P0-11–15, P0-28, P0-45–46 (`kdd-20261005-cur` / `graph-20261005-cur`). |
 | Backend productivo | **COMPLETED** P0-21/30/35/47 (demo/baseline + stores). P0-22 RBAC seed listo; Firebase Auth bloqueado Harumi. P0-24/25/26/29 `IN PROGRESS` (Model Armor/agentic). |
-| Evaluación | 48 golden + 5 KG C1–C5 en CI y baseline humana (P0-48). |
+| Evaluación | **COMPLETED** P0-48: 48 core + 5 extensiones KG C1–C5 en CI (`eval:gate`). Baseline humana / E2E → P0-39. |
 
 ### Alexandra
 
@@ -91,7 +95,9 @@ contenido de Firestore, resultados BigQuery ni valores de secretos.
    destructivo); ver `deploy/docs/live-telemetry-handoff.md`.
 2. ADR 0020 raw ingest (Alexandra) sin borrar `cur`/KG publicados.
 3. Seed Firestore `--execute` autorizado (workflow_dispatch) si falta overlay
-   RBAC en staging; luego Auth Firebase (Harumi) y E2E (P0-39/P0-48).
+   RBAC en staging; luego Auth Firebase (Harumi) y E2E (P0-39). P0-48 ya
+   cierra la matriz CI (48 core + 5 extensiones KG C1–C5); no reabrir por
+   baseline humana.
 
 Las acciones que escriben recursos GCP, ejecutan jobs BigQuery o activan
 proveedores requieren autorización y credenciales apropiadas fuera de Git.
