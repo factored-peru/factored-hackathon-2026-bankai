@@ -11,6 +11,7 @@
 		"env:prune-empty": "bun scripts/prune-empty-env.ts",
 		"eval:run": "bun scripts/evaluate-goldens.ts",
 		"eval:gate": "bun scripts/assert-eval-matrix-gate.ts",
+		"eval:compare": "bun scripts/eval-compare.ts",
 		"chat:try": "bun scripts/chat-try.ts",
 		"format": "biome format --write .",
 		"agent:matrix": "bun scripts/agent-matrix.ts",
