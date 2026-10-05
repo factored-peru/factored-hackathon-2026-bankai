@@ -42,8 +42,8 @@ Resumen alineado con la auditoría del 2026-10-04 y la hoja:
 
 | Ámbito | Hallazgo |
 | --- | --- |
-| Backend | Código, contratos, demo, guardrails, control plane, SessionManager y dobles existen; `bun test` local aprueba. Cloud Run staging corre **chat baseline** (`CHAT_PIPELINE=baseline`, Vertex `gemini-2.5-flash`, BigQuery, demo auth, realtime). DoD de Fase 5 sigue abierto: Firebase Auth/RBAC productivo, agentic, Model Armor y pruebas de integración autorizadas. |
-| Pipeline | Preparación, KDD, Naive Bayes exploratorio, ontología, compilador y publicación local existen; `pytest` local aprueba. **Fase 2 cerrada en BQ**: datasets `stg`/`aux`/`cur` desde snapshot canónico `hackathon` (`prepare-20261005-canonical`). En GCS hay `demo-bankai/current.json` + artefacto `graph-20261004-fullpop-ci`. Siguen abiertos ADR 0020 raw ingest, lease Firestore y DoD de Fases 3–4 sobre `cur`. |
+| Backend | Código, contratos, demo, guardrails, control plane, SessionManager y stores productivos (Firestore/Valkey) con seed de identidad demo; `bun test` + seed dry-run en CI. Cloud Run staging corre **chat baseline** (`CHAT_PIPELINE=baseline`, Vertex, BigQuery, demo auth). Abierto: Firebase Auth (Harumi), agentic, Model Armor cloud. |
+| Pipeline | **Fase 2** `stg`/`aux`/`cur` y **Fase 4** KDD/C1–C5/`graph-20261005-cur` publicados con lease. Sigue abierto ADR 0020 raw (Fase 3). |
 | Producto / baseline | Fase 0 cerrada. Fase 1 ejecutada sobre `factored-hackathon.hackathon`: motivos, volumen/severidad y baseline p50/p90 de resolución documentados. |
 | Evaluación | P0-40 `COMPLETED`. Matriz 48 core + 5 extensiones KG C1–C5 presente (P0-48 en progreso). CI E2E y baseline humana pendientes. |
 | Infra | Cloud Run + Job + Redis/VPC + AR vivos (ver `task-status-gcp-20261005.md`). Correlador de telemetría aún plano → no `terraform apply`. Ingesta S3→GCS administrada no desplegada; `raw` sigue incompleto (no bloquea capa curada canónica). |
@@ -121,6 +121,12 @@ Estado tras ejecución autorizada 2026-10-05: `bankai-pipeline --canonical-prepa
 | Validación | Sin transacciones, reclamos, clientes, textos o scores individuales en el grafo; prueba Bun/Zod de lectura; rechazo de artefactos corruptos; C6–C8 siguen bloqueados. |
 | Criterio de salida | C1–C5 exploratorios disponibles como evidencia de asociaciones. Publicación GCS y catálogo cerrado verificados antes de cerrar P0-15/P0-28/P0-46. |
 
+Estado tras ejecución autorizada 2026-10-05: KDD `kdd-20261005-cur` sobre `cur`,
+C1–C5 + suite, compile `graph-20261005-cur`, publish GCS con lease Firestore;
+`current.json` actualizado. P0-11–15, P0-28, P0-45–46 `COMPLETED` en hoja.
+graph-diff vs `kdd-20261004-fullpop` informativo (gate holdout_stable falló;
+publish sin `--require-diff-pass`).
+
 ### Fase 5 — Composición productiva segura del backend
 
 | Campo | Contenido |
@@ -130,6 +136,12 @@ Estado tras ejecución autorizada 2026-10-05: `bankai-pipeline --canonical-prepa
 | Entregables | Composición opt-in completa: Firebase Auth, identidad Firestore/BigQuery cerrada, Firestore durable, Valkey efímero, BigQuery con catálogo, Vertex y Model Armor. Orden de compuertas: sesión → privacidad → Model Armor → JEV → catálogo → JEV especializado → policy → RAG/respuesta. Demo y baseline aislados; sin fallback a SQL libre, acciones bancarias reales ni persistencia insegura. |
 | Validación | Integración autorizada: RBAC, cross-tenant, expiración, revocación, guardrails, límites BigQuery, checksum KG, fallo cerrado; contratos OpenAPI/inject sin depender de proveedores en CI de PR. |
 | Criterio de salida | Suite de integración contra servicios autorizados en verde. Las tareas permanecen `IN PROGRESS` mientras sólo existan dobles locales. |
+
+Estado tras avance 2026-10-05 (DEMO_AUTH + baseline, sin agentic): seed
+`user_profiles`/`customer_identity_bindings` + índice `conversation_snapshots`
+declarado; tests SessionManager/perfiles; CI dry-run. P0-30/35/47 evidenciada
+como `COMPLETED` en hoja; P0-22 RBAC seed listo, Firebase Auth sigue bloqueado
+por Harumi; P0-24/25/26/29 en `IN PROGRESS` (Model Armor/agentic no cerrados).
 
 ### Fase 6 — Evaluación, QA y salida controlada
 
@@ -203,10 +215,10 @@ en la columna `Respuesta` de la hoja.
       aprobados en BigQuery/GCS autorizados.
 - [ ] Fase 3: flujo ADR 0020 declarado, idempotencia y plan Terraform
       validados; apply sólo con autorización.
-- [ ] Fase 4: KDD/NB exploratorios C1–C5; grafo agregado publicado;
-      KG-RAG gated; C6–C8 bloqueados.
-- [ ] Fase 5: composición productiva opt-in; orden de compuertas verificado;
-      demo/baseline aislados; integración RBAC/tenant/guardrails/KG/BQ.
+- [x] Fase 4: KDD/NB exploratorios C1–C5; grafo agregado publicado;
+      KG-RAG gated vía GCS (`graph-20261005-cur`); C6–C8 bloqueados.
+- [~] Fase 5: composición productiva opt-in (demo/baseline + stores reales +
+      seed identidad); Firebase Auth/agentic/Model Armor siguen abiertos.
 - [ ] Fase 6: CI determinista; E2E de caminos críticos; p50/p95; JEV real
       manual/nocturno; P0-40 intacto.
 - [ ] Dependencias Harumi: interfaz Auth/CORS/smoke documentada; P0-38 no

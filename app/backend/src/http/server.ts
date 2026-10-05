@@ -92,6 +92,8 @@ type BuildServerOptions = Readonly<{
 	integrations?: AppIntegrations;
 	disputeRuntime?: DisputeHttpRuntime;
 	conversationRuntime?: ConversationHttpRuntime;
+	/** Inject durable stores in tests; otherwise built from env flags. */
+	productiveDataStores?: ProductiveDataStores | null;
 }>;
 
 type DemoRuntime = Readonly<{
@@ -108,7 +110,10 @@ export async function buildServer(options: BuildServerOptions = {}) {
 		knowledgeGraphRuntime === null
 			? null
 			: createRagRetrievalRuntime({ knowledgeGraph: knowledgeGraphRuntime });
-	const productiveDataStores = createProductiveDataStores(runtimeEnv);
+	const productiveDataStores =
+		options.productiveDataStores !== undefined
+			? options.productiveDataStores
+			: createProductiveDataStores(runtimeEnv);
 	const integrations = options.integrations ?? {
 		database: new LocalDatabase(),
 		bucket: new LocalBucket(),
@@ -288,6 +293,7 @@ async function createDemoRuntime(
 			? await createBaselineRunner(runtimeEnv, bqActors, {
 					llmCache: options.llmCache ?? new NoopLlmEphemeralCache(),
 					knowledgeGraphRuntime: options.knowledgeGraphRuntime ?? null,
+					customerIdentity: options.productive?.customerIdentity ?? null,
 					...(options.baselineObserver === undefined
 						? {}
 						: { observer: options.baselineObserver }),
@@ -334,6 +340,7 @@ async function createBaselineRunner(
 	options: {
 		llmCache: LlmEphemeralCache;
 		knowledgeGraphRuntime: KnowledgeGraphRuntime | null;
+		customerIdentity?: CustomerIdentityResolver | null;
 		observer?: BaselineRunObserver;
 	},
 ) {
@@ -348,8 +355,15 @@ async function createBaselineRunner(
 		GOOGLE_CLOUD_PROJECT: runtimeEnv.GOOGLE_CLOUD_PROJECT,
 		GOOGLE_CLOUD_LOCATION: runtimeEnv.GOOGLE_CLOUD_LOCATION,
 	});
+	const durableIdentity = options.customerIdentity ?? null;
 	const identity: CustomerIdentityResolver = {
-		resolve: (session) => demoActors.customerIdForActor(session.userId),
+		async resolve(session) {
+			if (durableIdentity !== null) {
+				const bound = await durableIdentity.resolve(session);
+				if (bound !== null) return bound;
+			}
+			return demoActors.customerIdForActor(session.userId);
+		},
 	};
 	const knowledgeGraph = options.knowledgeGraphRuntime;
 	return new BaselineConversationRunner({

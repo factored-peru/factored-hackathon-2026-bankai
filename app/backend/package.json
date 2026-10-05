@@ -16,6 +16,7 @@
 		"model-armor:smoke": "bun scripts/model-armor-smoke.ts",
 		"catalog:dry-run": "bun scripts/structured-catalog-dry-run.ts",
 		"structured:try": "bun scripts/structured-rag-try.ts",
+		"seed:firestore-demo-identity": "bun scripts/seed-firestore-demo-identity.ts",
 		"spec:check": "bun run scripts/validate-openapi.ts",
 		"start": "bun src/index.ts",
 		"test": "bun test"

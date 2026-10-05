@@ -280,7 +280,7 @@ class KddTest(unittest.TestCase):
             ["transactions", "complaints"],
         )
         complaints = plan["populations"][1]
-        self.assertEqual(complaints["row_filter_sql"], "`category` = 'Transactions'")
+        self.assertEqual(complaints["row_filter_sql"], "UPPER(`category`) = 'TRANSACTIONS'")
         self.assertIn("resolution_days", complaints["leakage_excluded"])
         self.assertEqual(plan["validation"]["enabled"], True)
         self.assertEqual(plan["validation"]["holdout_fraction"], 0.2)

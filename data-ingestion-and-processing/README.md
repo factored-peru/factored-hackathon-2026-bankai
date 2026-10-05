@@ -119,8 +119,9 @@ bajo `artifacts/graph/<run-id>/`. Para adjuntar provenance agregado de C1–C5,
 añade `--supervised-suite-artifact-dir` y las cinco opciones
 `--cN-artifact-dir`; sus checksums deben coincidir con el suite manifest.
 
-Tras un prepare canónico exitoso, las poblaciones aprobadas para la siguiente
-fase KDD viven en `cur` (no en `hackathon` ni en `raw` incompleto).
+Tras un prepare canónico exitoso, las poblaciones aprobadas para KDD/C1–C5 viven
+en `cur` (configs `*.toml.example` usan `dataset = "cur"`). Los filtros de
+categoría son case-insensitive porque prepare normaliza categóricos a `UPPER`.
 
 ## Publicación KG-RAG (local o GCS)
 

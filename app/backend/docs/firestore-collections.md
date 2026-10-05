@@ -15,6 +15,10 @@ Valkey (ADR 0005 / 0017), not Firestore.
 | `trace.{traceId,status,reasonCode,decisionId,workflowId,approvalId,updatedAt}` | Run metadata |
 
 **Composite index (list):** `tenantId` ASC, `ownerUserId` ASC, `trace.updatedAt` DESC.
+Declared in repo-root [`firestore.indexes.json`](../../../firestore.indexes.json)
+(and mirrored in Terraform `modules/state`). Deploy indexes without TF apply via
+Firebase CLI or `gcloud firestore indexes composite create` — see
+[`deploy/docs/state-bootstrap.md`](../../../deploy/docs/state-bootstrap.md).
 
 ### `conversation_attachments`
 
@@ -44,6 +48,24 @@ Binary bytes live in GCS (`GCS_UPLOAD_BUCKET` / prefix). Never over WebSocket.
 | `status` | `active` \| `revoked` |
 | `displayLabel` | Optional |
 | `updatedAt` | ISO timestamp |
+
+### Demo identity seed
+
+Seed script (owner layer: `app/backend/`):
+
+```bash
+bun run seed:firestore-demo-identity          # --dry-run (default)
+bun run seed:firestore-demo-identity -- --execute --fixture
+bun run seed:firestore-demo-identity -- --execute --from-bigquery
+```
+
+- Writes allowlisted roles/capabilities into `user_profiles` and optional
+  `customer_identity_bindings` for demo actors (`demo-bankai` tenant).
+- `--dry-run` is the CI default; never logs customer IDs / PII.
+- `--execute` requires ADC + explicit authorization (local or
+  `workflow_dispatch` “Seed Firestore demo identity”).
+- Fixture mode uses synthetic customer ids; BigQuery mode uses the same HMAC
+  cohort as `BigQueryDemoActorDirectory` without printing source values.
 
 ### `pipeline_leases` (offline pipeline)
 

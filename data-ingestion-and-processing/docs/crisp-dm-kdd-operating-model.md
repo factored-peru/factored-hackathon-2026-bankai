@@ -11,7 +11,7 @@ un join heurístico ni una acción online.
 | Business understanding | Dispute Transaction Support | problema y tareas P0 | KPI, alcance y no-alcance | producto / backend |
 | Data understanding | contratos y perfil | metadatos BigQuery autorizados | perfil agregado y brechas | pipeline |
 | Data preparation | `prepare` | objeto `verified/` + ledger **o** snapshot canónico autorizado (`--canonical-prepare` desde `hackathon`) | proyección `raw/canonical → stg → aux → cur`, reglas e indicadores de imputación | pipeline |
-| Modeling | KDD y C1–C5 | poblaciones curadas y contratos | reglas, baselines, métricas y lineage agregado | pipeline |
+| Modeling | KDD y C1–C5 | poblaciones curadas (`cur`) y contratos | reglas, baselines, métricas y lineage agregado | pipeline |
 | Evaluation | suite y goldens | artefactos versionados | reporte saneado, bloqueos y comparación baseline | backend / pipeline |
 | Deployment | publicación y runtime | artefacto validado | `graph-vN`, manifiesto y catálogo cerrado | pipeline / backend |
 

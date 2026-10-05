@@ -1,6 +1,6 @@
 [c2]
 project = "factored-hackathon"
-dataset = "hackathon"
+dataset = "cur"
 output_dir = "artifacts/c2"
 category = "Transactions"
 maximum_bytes_billed = 1000000000

@@ -1,6 +1,6 @@
 [c5]
 project="factored-hackathon"
-dataset="hackathon"
+dataset="cur"
 output_dir="artifacts/c5"
 maximum_bytes_billed=1000000000
 alpha=1.0
