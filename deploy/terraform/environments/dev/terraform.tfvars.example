@@ -14,4 +14,8 @@ backend_environment = {
 }
 
 # GCS_GRAPH_BUCKET is injected by the runtime module from kg_artifacts.
+# The module also creates the evaluation dataset and table (ADR 0015). Writing
+# to them is opt-in and needs BIGQUERY_ENABLED=true; to enable it add to
+# backend_environment: BIGQUERY_EVAL_DATASET = "bankai_evaluation" and
+# BIGQUERY_EVAL_TABLE = "evaluation_results".
 pipeline_environment = {}

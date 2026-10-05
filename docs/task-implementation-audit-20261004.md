@@ -30,12 +30,18 @@ No sustituye los ADR ni convierte la hoja de cálculo en arquitectura normativa.
 - El baseline comparativo no se convierte en vía autorizada y permanece fuera
   del `StateGraph`.
 - La implementación actual no agrega DeepEval, LangSmith, Promptfoo ni
-  AgentEvals. La dependencia `langfuse` queda declarada en el backend con
-  exportador metadata-only **deshabilitado** (`OTEL_ENABLED` /
-  `LANGFUSE_ENABLED` en false); P0-33 (Alexandra) activa el cableado OTel →
-  Langfuse Cloud US sin contenido. No hay Docker self-host de Langfuse.
-  OpenTelemetry y una futura persistencia BigQuery sólo aceptan metadata
-  saneada.
+  AgentEvals. P0-33 (Alexandra) está implementada para los resultados de
+  evaluación: `bun run eval:run -- --emit` envía un span por fixture a
+  Langfuse Cloud US por OTLP/HTTP —con el exportador estándar de OpenTelemetry,
+  sin el SDK `langfuse`, sin Docker self-host, sin callbacks ni
+  autoinstrumentación— y persiste cada resultado versionado en BigQuery
+  (ADR 0012 y 0015). Ambos canales son opt-in (`OTEL_ENABLED` y
+  `LANGFUSE_ENABLED` juntos; `BIGQUERY_EVAL_DATASET`), pasan por una lista
+  cerrada de atributos y sólo aceptan metadata saneada. Una ejecución real con
+  fixtures sintéticos (2026-10-05) escribió 460 filas y 53 trazas visibles en
+  Langfuse. Quedan fuera los spans del flujo conversacional completo (sesión,
+  Model Armor, JEV, policy, retrieval): el contrato ya admite sus nombres, pero
+  nada los emite todavía.
 - La transferencia S3→GCS, Eventarc, Cloud Tasks y `ingestion_ledger` siguen
   siendo responsabilidades de la ingesta ADR 0020 y no se sustituyen por un
   script local o acceso desde el backend.

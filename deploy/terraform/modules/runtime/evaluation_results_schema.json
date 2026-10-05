@@ -1,0 +1,20 @@
+[
+  { "name": "schema_version", "type": "STRING", "mode": "REQUIRED", "description": "Record contract version; v1 today." },
+  { "name": "run_id", "type": "STRING", "mode": "REQUIRED", "description": "Opaque ID shared by every row of one evaluation run." },
+  { "name": "matrix_version", "type": "STRING", "mode": "REQUIRED", "description": "Golden-set matrix version, for example p0-v1." },
+  { "name": "fixture_id", "type": "STRING", "mode": "REQUIRED", "description": "Synthetic fixture ID; never a real conversation." },
+  { "name": "route", "type": "STRING", "mode": "REQUIRED", "description": "llm, structured_rag, kg_rag or ood." },
+  { "name": "metric", "type": "STRING", "mode": "REQUIRED", "description": "Metric from the closed catalog in the backend." },
+  { "name": "score", "type": "FLOAT", "mode": "REQUIRED", "description": "0 to 1." },
+  { "name": "passed", "type": "BOOLEAN", "mode": "REQUIRED" },
+  { "name": "label", "type": "STRING", "mode": "REQUIRED", "description": "pass, fail or skipped." },
+  { "name": "reason_code", "type": "STRING", "mode": "NULLABLE", "description": "Lower snake_case code; null when passed." },
+  { "name": "evaluator", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "evaluator_version", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "mode", "type": "STRING", "mode": "REQUIRED", "description": "deterministic, jev or llm." },
+  { "name": "gate", "type": "STRING", "mode": "REQUIRED", "description": "informational in P0; a blocking gate needs a new ADR." },
+  { "name": "policy_version", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "catalog_version", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "correlator", "type": "STRING", "mode": "NULLABLE", "description": "Keyed-hash pseudonym of the trace; same value as the Langfuse span." },
+  { "name": "recorded_at", "type": "TIMESTAMP", "mode": "REQUIRED" }
+]

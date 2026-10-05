@@ -2,6 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import {
+	isLangfuseCloudUsUrl,
+	LANGFUSE_CLOUD_US_HOST,
+} from "./langfuse-destination.js";
 
 const envBoolean = z.union([z.boolean(), z.stringbool()]);
 
@@ -50,6 +54,13 @@ export const envSchema = z.object({
 		.max(60_000)
 		.default(30_000),
 	STRUCTURED_CATALOG_PATH: z.string().default("config/structured-catalog.json"),
+	/**
+	 * Sanitized evaluation results (ADR 0015). Empty dataset means no BigQuery
+	 * persistence. It must differ from BIGQUERY_DATASET: customer data and
+	 * evaluation metadata never share a dataset or its IAM.
+	 */
+	BIGQUERY_EVAL_DATASET: z.string().default(""),
+	BIGQUERY_EVAL_TABLE: z.string().default("evaluation_results"),
 	GCS_ENABLED: envBoolean.default(false),
 	/** Private KG artifact bucket; set by Terraform from kg_artifacts. */
 	GCS_GRAPH_BUCKET: z.string().default(""),
@@ -139,9 +150,11 @@ export const envSchema = z.object({
 	LOCAL_PII_DETECTOR_ENABLED: envBoolean.default(false),
 	LOCAL_PII_DETECTOR_URL: z.string().default(""),
 	LOCAL_PII_DETECTOR_API_KEY: z.string().default(""),
+	// Telemetry (ADR 0012): spans go only to Langfuse Cloud US, never to an
+	// arbitrary OTLP endpoint, so there is deliberately no endpoint setting.
 	OTEL_ENABLED: envBoolean.default(false),
-	OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default(""),
-	OTEL_EXPORTER_OTLP_HEADERS: z.string().default(""),
+	/** Keyed-hash secret for the trace correlator; never the raw trace ID. */
+	TELEMETRY_CORRELATOR_KEY: z.string().default(""),
 	// Langfuse Cloud US (ADR 0012): metadata visualizer only; keys never in Git.
 	LANGFUSE_ENABLED: envBoolean.default(false),
 	LANGFUSE_PUBLIC_KEY: z.string().default(""),
@@ -424,6 +437,28 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		}
 	}
 
+	if (settings.BIGQUERY_EVAL_DATASET.length > 0) {
+		const invalid = [
+			["BIGQUERY_EVAL_DATASET", settings.BIGQUERY_EVAL_DATASET],
+			["BIGQUERY_EVAL_TABLE", settings.BIGQUERY_EVAL_TABLE],
+		]
+			.filter(([, value]) => !/^[A-Za-z0-9_]{1,1024}$/.test(value ?? ""))
+			.map(([name]) => name);
+		if (!settings.BIGQUERY_ENABLED) {
+			invalid.push("BIGQUERY_ENABLED=true");
+		}
+		if (invalid.length > 0) {
+			throw new Error(
+				`SVC-CORE-9020: BIGQUERY_EVAL_DATASET requires valid ${invalid.join(", ")}`,
+			);
+		}
+		if (settings.BIGQUERY_EVAL_DATASET === settings.BIGQUERY_DATASET) {
+			throw new Error(
+				"SVC-CORE-9021: BIGQUERY_EVAL_DATASET must differ from BIGQUERY_DATASET",
+			);
+		}
+	}
+
 	if (settings.JEV_ENABLED) {
 		const missing = [
 			["JEV_BASE_URL", settings.JEV_BASE_URL],
@@ -441,6 +476,33 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		if (missing.length > 0) {
 			throw new Error(
 				`SVC-CORE-9007: JEV_ENABLED requires valid ${missing.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.OTEL_ENABLED !== settings.LANGFUSE_ENABLED) {
+		throw new Error(
+			"SVC-CORE-9017: OTEL_ENABLED and LANGFUSE_ENABLED must be enabled together",
+		);
+	}
+	if (settings.OTEL_ENABLED) {
+		const missing = [
+			["LANGFUSE_PUBLIC_KEY", settings.LANGFUSE_PUBLIC_KEY],
+			["LANGFUSE_SECRET_KEY", settings.LANGFUSE_SECRET_KEY],
+		]
+			.filter(([, value]) => (value ?? "").trim().length === 0)
+			.map(([name]) => name);
+		if ((settings.TELEMETRY_CORRELATOR_KEY ?? "").length < 16) {
+			missing.push("TELEMETRY_CORRELATOR_KEY (min 16 characters)");
+		}
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9018: OTEL_ENABLED requires valid ${missing.join(", ")}`,
+			);
+		}
+		if (!isLangfuseCloudUsUrl(settings.LANGFUSE_BASE_URL)) {
+			throw new Error(
+				`SVC-CORE-9019: LANGFUSE_BASE_URL must be https://${LANGFUSE_CLOUD_US_HOST}`,
 			);
 		}
 	}

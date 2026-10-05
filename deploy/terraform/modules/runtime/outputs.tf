@@ -17,3 +17,11 @@ output "pipeline_job_name" {
 output "kg_artifact_bucket" {
   value = google_storage_bucket.kg_artifacts.name
 }
+
+output "evaluation_dataset" {
+  value = google_bigquery_dataset.evaluation.dataset_id
+}
+
+output "evaluation_table" {
+  value = google_bigquery_table.evaluation_results.table_id
+}

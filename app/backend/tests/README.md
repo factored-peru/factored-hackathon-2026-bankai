@@ -3,6 +3,27 @@
 Pruebas con `bun test`.
 
 - `tests/contract`: valida OpenAPI y el contrato HTTP.
+- `tests/telemetry-attributes.test.ts`, `tests/telemetry-sanitizer.test.ts` y
+  `tests/otel-evaluation-telemetry.test.ts`: el contrato cerrado de telemetría,
+  el saneador y el adaptador OTel. Verifican, con el golden set real y un
+  exportador en memoria, que ni spans, métricas ni registros BigQuery llevan
+  contenido, `trace_id` crudo ni IDs de alta cardinalidad.
+- `tests/evaluation-emission.test.ts`: `eval:run -- --emit` con exportador y
+  sumidero en memoria y el comando real en un proceso hijo. Verifica un span por
+  fixture y una fila por resultado con el mismo correlador, que un exportador o
+  un almacén que falla produce código 1 y que ninguna salida contiene `trace_id`
+  crudo ni claves. Sin `--emit` la salida no cambia.
+- `tests/bigquery-evaluation-result-sink.test.ts`: el adaptador de BigQuery con
+  un cliente simulado, sin red. Verifica que las columnas coinciden con el
+  esquema de la tabla declarado en `deploy/`, que ninguna clave de idempotencia
+  colisiona en el golden set (que reutiliza `fixtureId` entre rutas), el
+  lote de 500, que un registro inválido no escribe nada y que ningún error
+  reproduce valores de fila.
+- `tests/telemetry-config.test.ts` y `tests/otel-telemetry-runtime.test.ts`:
+  validación de arranque (`SVC-CORE-9017` a `9019`), destino único Langfuse
+  Cloud US, compuerta final de spans y formato real de la petición OTLP contra un
+  servidor local, incluido el rechazo de `OTEL_EXPORTER_OTLP_*` ambientales. No
+  usan red externa.
 - `tests/error-codes.test.ts`: valida la taxonomia de errores y el registro de
   codigos.
 - `tests/health.test.ts`: valida health/readiness e integraciones opcionales.

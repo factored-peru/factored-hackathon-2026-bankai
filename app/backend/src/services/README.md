@@ -26,6 +26,18 @@ entregar `query` ya desidentificado: el grafo no guarda texto crudo. El
 adaptador actual (`integrations/memory/in-memory-checkpointer.ts`) es volátil y
 por proceso; Valkey lo sustituirá detrás del mismo puerto.
 
+`observability/telemetry-sanitizer.ts` es el único punto por el que un resultado
+de evaluación se convierte en telemetría: construye atributos de span, de
+métrica y registros BigQuery y los valida contra el contrato cerrado de
+`domain/observability` antes de entregarlos a un exportador.
+`observability/trace-correlator.ts` deriva el pseudónimo HMAC que sustituye al
+`trace_id` crudo. `EvaluationRunner` acepta un `EvaluationTelemetry` opcional
+(`ports/evaluation-telemetry.ts`); su fallo nunca altera una evaluación.
+
+`ports/evaluation-result-sink.ts` define `EvaluationResultSink`, el destino
+durable de los resultados de evaluación saneados. Devuelve un resultado con
+códigos cerrados de fallo y nunca lanza: persistir mal no altera una evaluación.
+
 `ports/customer-identity.ts` define `CustomerIdentityResolver`: devuelve el
 `customer_id` de la sesión verificada o `null`. Las consultas de datos usan ese
 valor y no aceptan uno del prompt, del navegador ni del modelo; `null` significa

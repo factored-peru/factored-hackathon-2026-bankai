@@ -25,6 +25,37 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
   repositorio y ejecutor). Falla cerrada con `BIGQUERY_ENABLED=false` y no abre
   conexión: el cliente se autentica con ADC al crear el primer job. El selector
   y el resolver de identidad se inyectan; no son configuración de BigQuery.
+- `bigquery/bigquery-evaluation-result-sink.ts`: persiste los registros
+  versionados `v1` de resultados de evaluación con inserciones en streaming, en
+  lotes de 500, con `insertId` igual a la clave natural completa
+  (`runId:fixtureId:route:metric:evaluator`). Vuelve a validar cada registro
+  contra el esquema estricto y uno inválido no escribe nada; `skipInvalidRows` e
+  `ignoreUnknownValues` están apagados para que una fila rechazada falle en voz
+  alta. Falla con códigos cerrados (`sink_invalid_record`, `sink_rejected_rows`,
+  `sink_not_found`, `sink_permission_denied`, `sink_auth_failed`,
+  `sink_billing_required`, `sink_unavailable`) derivados del estado HTTP y del
+  `reason` de Google; nunca lanza ni conserva el mensaje del proveedor.
+  `evaluation-result-sink-runtime.ts` es su fábrica: con
+  `BIGQUERY_EVAL_DATASET` vacío devuelve `null` y no abre conexión; el cliente se
+  autentica con ADC en el primer insert. `memory/in-memory-evaluation-result-sink.ts`
+  es el doble para pruebas.
+- `observability/otel-telemetry-runtime.ts`: única fábrica de la ruta de
+  telemetría. Con `OTEL_ENABLED=false` devuelve `null` y no crea nada. Activa,
+  compone un `TracerProvider` aislado (nunca global, sin autoinstrumentación ni
+  callbacks) con `BatchSpanProcessor` hacia `SanitizingSpanExporter` y el
+  exportador OTLP/HTTP de Langfuse Cloud US (`langfuse-otlp-config.ts`: endpoint
+  `/api/public/otel/v1/traces`, Basic auth y `x-langfuse-ingestion-version: 4`).
+  Se niega a arrancar si hay variables `OTEL_EXPORTER_OTLP_*` en el entorno.
+  `flush()` debe llamarse antes de que un proceso corto termine.
+- `observability/sanitizing-span-exporter.ts`: última compuerta antes de salir.
+  Descarta —y sólo cuenta, sin registrar— todo span con nombre o atributos fuera
+  del contrato, eventos, enlaces, mensaje de estado libre o atributos de recurso
+  inesperados.
+- `observability/otel-evaluation-telemetry.ts`: emite un span por fixture
+  evaluado (y, si recibe un `Meter`, un punto de métrica de baja cardinalidad
+  por resultado) con un `Tracer` inyectado. Todos los atributos salen del
+  saneador; si uno incumple el contrato descarta el fixture completo, lo
+  cuenta en `droppedCount` y nunca lanza.
 - `catalog/`: `FileQueryCatalogSource` lee el catálogo JSON de una ruta fijada
   por configuración; la validación vive en `services/data`.
 - `identity/`: resuelve la sesión al `customer_id` bancario.

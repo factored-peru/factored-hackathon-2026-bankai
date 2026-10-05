@@ -64,6 +64,32 @@ un callback LangChain/LangGraph ni auto-instrumentación de proveedor, porque
 pueden capturar contenido. El recurso, nombre de span, atributos y eventos se
 validan contra una allowlist antes de exportar.
 
+Langfuse Cloud US recibe esos spans por OTLP/HTTP desde el exportador estándar
+de OpenTelemetry; no se usa el SDK de Langfuse ni su instrumentación, de modo
+que la allowlist es el único punto de salida. La allowlist es un contrato
+cerrado en `domain/observability/telemetry-attributes.ts`, común a spans,
+atributos de métricas OTel, Langfuse y registros BigQuery: claves nombradas, un
+catálogo cerrado de métricas de evaluación y valores con forma restringida
+(identificadores, códigos snake_case, pseudónimos hexadecimales), de modo que
+texto libre no pasa ni bajo una clave permitida. Las claves de contenido
+(`prompt`, `sql`, `tenantId`, `traceId`, etc.) se rechazan por nombre, y el
+error nombra la clave, nunca el valor. Los atributos de métricas OTel excluyen
+IDs, hashes y fixtures; sólo los spans llevan el pseudónimo de correlación.
+
+El destino es únicamente `https://us.cloud.langfuse.com`: la configuración no
+ofrece un endpoint OTLP libre, el arranque valida el host y las credenciales
+(`SVC-CORE-9017` a `9019`) y, con telemetría activa, rechaza cualquier variable
+`OTEL_EXPORTER_OTLP_*` del entorno porque el exportador estándar la mezclaría en
+cada petición. Antes de salir, un exportador de última compuerta descarta todo
+span con nombre o atributos fuera del contrato, eventos, enlaces, mensaje de
+estado libre o atributos de recurso inesperados; sólo los cuenta, sin
+registrarlos.
+
+El correlador de cada traza es un HMAC de su `trace_id` con una clave de
+entorno; nunca el `trace_id` de entrada. Es el mismo valor en el span de
+Langfuse y en la fila BigQuery, y rotar la clave corta la correlación histórica
+a propósito.
+
 La traza permitida preserva el orden causal, no el contenido:
 
 ```text
