@@ -34,7 +34,6 @@ import {
 	InMemoryDisputeSupportStore,
 } from "../integrations/memory/in-memory-dispute-support-store.js";
 import { InMemorySessionStore } from "../integrations/memory/in-memory-session-store.js";
-import { MemoryItemStore } from "../integrations/memory-item-store.js";
 import { createLiveBaselineObserver } from "../integrations/observability/live-baseline-observer-runtime.js";
 import {
 	createProductiveDataStores,
@@ -63,7 +62,6 @@ import {
 import { ConversationService } from "../services/conversations/conversation-service.js";
 import { deterministicConversationRunner } from "../services/conversations/deterministic-conversation-runner.js";
 import { DisputeSupportService } from "../services/disputes/dispute-support-service.js";
-import { ItemService } from "../services/item-service.js";
 import type { BaselineRunObserver } from "../services/ports/baseline-chat.js";
 import type { DemoActorDirectory } from "../services/ports/conversation.js";
 import type { CustomerIdentityResolver } from "../services/ports/customer-identity.js";
@@ -257,7 +255,6 @@ export async function buildServer(options: BuildServerOptions = {}) {
 	const disputeRuntime = options.disputeRuntime ?? demoRuntime?.dispute;
 	registerRoutes(
 		app,
-		new ItemService(new MemoryItemStore()),
 		runtimeEnv,
 		integrations,
 		disputeRuntime,

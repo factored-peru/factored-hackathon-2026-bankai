@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { loadSpec, validateSpec } from "../../scripts/validate-openapi.js";
+import { envSchema } from "../../src/config/env.js";
 import { buildServer } from "../../src/http/server.js";
+
+const demoEnv = envSchema.parse({
+	APP_ENV: "dev",
+	DEMO_AUTH_ENABLED: true,
+	REALTIME_ENABLED: true,
+	CORS_ALLOWED_ORIGINS: "http://localhost:3001",
+	SESSION_STORE_ENABLED: false,
+});
 
 describe("OpenAPI contract", () => {
 	test("spec passes project rules", async () => {
@@ -46,10 +55,18 @@ describe("OpenAPI contract", () => {
 	});
 
 	test("error endpoint follows problem contract", async () => {
-		const app = await buildServer();
+		const app = await buildServer({ env: demoEnv });
+		const login = await app.inject({
+			method: "POST",
+			url: "/v1/demo/sessions",
+			payload: { actorId: "demo-customer-1" },
+		});
+		const setCookie = login.headers["set-cookie"];
+		const cookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
 		const response = await app.inject({
 			method: "GET",
-			url: "/v1/items/missing",
+			url: "/v1/conversations/missing-thread",
+			headers: { cookie: cookie ?? "" },
 		});
 
 		expect(response.statusCode).toBe(409);
@@ -69,13 +86,14 @@ describe("OpenAPI contract", () => {
 			},
 		});
 		expect(response.json().error).toBeUndefined();
+		await app.close();
 	});
 
 	test("validation errors use problem contract", async () => {
-		const app = await buildServer();
+		const app = await buildServer({ env: demoEnv });
 		const response = await app.inject({
 			method: "POST",
-			url: "/v1/items",
+			url: "/v1/demo/sessions",
 			payload: {},
 		});
 
@@ -96,9 +114,10 @@ describe("OpenAPI contract", () => {
 				retry_after_s: null,
 			},
 		});
+		await app.close();
 	});
 
-	test("items routes declare service token security", async () => {
+	test("serviceToken scheme remains declared without items routes", async () => {
 		const spec = await loadSpec();
 
 		expect(spec.components?.securitySchemes?.serviceToken).toEqual({
@@ -107,12 +126,10 @@ describe("OpenAPI contract", () => {
 			description:
 				"Optional service-to-service token. Required on protected routes when SERVICE_TOKEN is configured.",
 		});
-		expect(spec.paths?.["/v1/items"]?.post?.security).toEqual([
-			{ serviceToken: [] },
-		]);
-		expect(spec.paths?.["/v1/items/{itemId}"]?.get?.security).toEqual([
-			{ serviceToken: [] },
-		]);
+		expect(spec.paths?.["/v1/items"]).toBeUndefined();
+		expect(spec.paths?.["/v1/items/{itemId}"]).toBeUndefined();
+		expect(spec.components?.schemas?.Item).toBeUndefined();
+		expect(spec.components?.schemas?.CreateItemRequest).toBeUndefined();
 		expect(spec.paths?.["/v1/health/live"]?.get?.security).toBeUndefined();
 	});
 
@@ -123,8 +140,6 @@ describe("OpenAPI contract", () => {
 			"GET /asyncapi.json",
 			"GET /v1/health/live",
 			"GET /v1/health/ready",
-			"POST /v1/items",
-			"GET /v1/items/{itemId}",
 			"POST /v1/sessions",
 			"GET /v1/transactions/{transactionId}",
 			"GET /v1/disputes/{disputeId}",

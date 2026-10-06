@@ -5,6 +5,7 @@ Esta base aplica SOLID de forma practica:
 - SRP: rutas HTTP, errores, dominio, servicios e integraciones viven en carpetas distintas.
 - OCP: nuevos codigos de error se agregan con `defineErrorCode` sin tocar
   handlers, siempre dentro del rango reservado del dominio.
-- LSP: cualquier adaptador que cumpla `ItemStore` puede reemplazar `MemoryItemStore`.
+- LSP: cualquier adaptador que cumpla el puerto de un caso de uso (p. ej.
+  `SessionStore`, stores de disputa) puede reemplazar su implementacion en memoria.
 - ISP: las interfaces exponen solo los metodos que el caso de uso necesita.
-- DIP: `ItemService` depende de `ItemStore`, no de una clase concreta.
+- DIP: los servicios dependen de puertos, no de clases concretas de integracion.

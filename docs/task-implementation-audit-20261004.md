@@ -3,6 +3,12 @@
 Este documento contrasta las tareas de `planning/to-adopt` con ADR y código.
 No sustituye los ADR ni convierte la hoja de cálculo en arquitectura normativa.
 
+> **Superseded para estado operativo (2026-10-05 tarde):** usar
+> [`task-status-reconciled-20261005.md`](task-status-reconciled-20261005.md) y
+> [`task-status-gcp-20261005.md`](task-status-gcp-20261005.md). Este archivo
+> conserva la auditoría local del 2026-10-04 (Fases 2/4/48 aún “en progreso”
+> aquí; esas filas ya están `COMPLETED` en hoja tras ejecuciones autorizadas).
+
 ## Validación de partida
 
 - Backend: `bun test` aprobó 219 pruebas y 992 assertions.

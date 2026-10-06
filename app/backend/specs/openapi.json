@@ -16,9 +16,6 @@
 			"name": "health"
 		},
 		{
-			"name": "items"
-		},
-		{
 			"name": "disputes"
 		},
 		{
@@ -57,7 +54,11 @@
 					"200": {
 						"description": "AsyncAPI document",
 						"content": {
-							"application/json": { "schema": { "type": "object" } }
+							"application/json": {
+								"schema": {
+									"type": "object"
+								}
+							}
 						}
 					}
 				}
@@ -109,142 +110,6 @@
 				}
 			}
 		},
-		"/v1/items": {
-			"post": {
-				"operationId": "createItem",
-				"tags": ["items"],
-				"summary": "Create an item",
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CreateItemRequest"
-							},
-							"examples": {
-								"demo": {
-									"value": {
-										"name": "demo",
-										"metadata": {}
-									}
-								}
-							}
-						}
-					}
-				},
-				"responses": {
-					"201": {
-						"description": "Created item",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Item"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Missing or invalid service token",
-						"headers": {
-							"x-error-code": {
-								"$ref": "#/components/headers/ErrorCodeHeader"
-							}
-						},
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/Problem"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Invalid request",
-						"headers": {
-							"x-error-code": {
-								"$ref": "#/components/headers/ErrorCodeHeader"
-							}
-						},
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/Problem"
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"serviceToken": []
-					}
-				]
-			}
-		},
-		"/v1/items/{itemId}": {
-			"get": {
-				"operationId": "getItem",
-				"tags": ["items"],
-				"summary": "Get an item",
-				"parameters": [
-					{
-						"name": "itemId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "Item",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Item"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Missing or invalid service token",
-						"headers": {
-							"x-error-code": {
-								"$ref": "#/components/headers/ErrorCodeHeader"
-							}
-						},
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/Problem"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Resource state conflict",
-						"headers": {
-							"x-error-code": {
-								"$ref": "#/components/headers/ErrorCodeHeader"
-							}
-						},
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/Problem"
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"serviceToken": []
-					}
-				]
-			}
-		},
 		"/v1/sessions": {
 			"post": {
 				"operationId": "createDisputeSession",
@@ -255,7 +120,9 @@
 						"description": "Session created",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/SessionCreated" }
+								"schema": {
+									"$ref": "#/components/schemas/SessionCreated"
+								}
 							}
 						}
 					},
@@ -263,7 +130,9 @@
 						"description": "Missing or invalid identity token",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -271,7 +140,9 @@
 						"description": "Identity runtime unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -288,7 +159,9 @@
 						"name": "transactionId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
@@ -296,7 +169,9 @@
 						"description": "Synthetic local evidence",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/TransactionEvidence" }
+								"schema": {
+									"$ref": "#/components/schemas/TransactionEvidence"
+								}
 							}
 						}
 					},
@@ -304,7 +179,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -312,7 +189,9 @@
 						"description": "Tenant or ownership denied",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -320,12 +199,18 @@
 						"description": "Transaction unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/disputes/{disputeId}": {
@@ -338,7 +223,9 @@
 						"name": "disputeId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
@@ -346,7 +233,9 @@
 						"description": "Synthetic local evidence",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/DisputeEvidence" }
+								"schema": {
+									"$ref": "#/components/schemas/DisputeEvidence"
+								}
 							}
 						}
 					},
@@ -354,7 +243,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -362,7 +253,9 @@
 						"description": "Tenant or ownership denied",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -370,12 +263,18 @@
 						"description": "Dispute unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/dispute-cases/{caseId}/escalations": {
@@ -388,14 +287,18 @@
 						"name": "caseId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"requestBody": {
 					"required": true,
 					"content": {
 						"application/json": {
-							"schema": { "$ref": "#/components/schemas/EscalationRequest" }
+							"schema": {
+								"$ref": "#/components/schemas/EscalationRequest"
+							}
 						}
 					}
 				},
@@ -404,7 +307,9 @@
 						"description": "Pending approval",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/PendingEscalation" }
+								"schema": {
+									"$ref": "#/components/schemas/PendingEscalation"
+								}
 							}
 						}
 					},
@@ -412,7 +317,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -420,7 +327,9 @@
 						"description": "Capability or ownership denied",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -428,12 +337,18 @@
 						"description": "Case state conflict",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/dispute-cases/{caseId}": {
@@ -446,7 +361,9 @@
 						"name": "caseId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
@@ -454,7 +371,9 @@
 						"description": "Case evidence",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/DisputeCase" }
+								"schema": {
+									"$ref": "#/components/schemas/DisputeCase"
+								}
 							}
 						}
 					},
@@ -462,7 +381,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -470,7 +391,9 @@
 						"description": "Tenant or ownership denied",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -478,12 +401,18 @@
 						"description": "Case unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/approvals/{approvalId}/decisions": {
@@ -496,14 +425,18 @@
 						"name": "approvalId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"requestBody": {
 					"required": true,
 					"content": {
 						"application/json": {
-							"schema": { "$ref": "#/components/schemas/ApprovalDecision" }
+							"schema": {
+								"$ref": "#/components/schemas/ApprovalDecision"
+							}
 						}
 					}
 				},
@@ -522,7 +455,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -530,7 +465,9 @@
 						"description": "Operator capability denied",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -538,12 +475,18 @@
 						"description": "Approval state conflict",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/demo/actors": {
@@ -558,7 +501,9 @@
 							"application/json": {
 								"schema": {
 									"type": "array",
-									"items": { "$ref": "#/components/schemas/DemoActor" }
+									"items": {
+										"$ref": "#/components/schemas/DemoActor"
+									}
 								}
 							}
 						}
@@ -567,7 +512,9 @@
 						"description": "Demo mode unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -584,7 +531,9 @@
 						"description": "Safe fixture identifiers",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/DemoFixtures" }
+								"schema": {
+									"$ref": "#/components/schemas/DemoFixtures"
+								}
 							}
 						}
 					},
@@ -592,7 +541,9 @@
 						"description": "Demo mode unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -611,7 +562,11 @@
 							"schema": {
 								"type": "object",
 								"required": ["actorId"],
-								"properties": { "actorId": { "type": "string" } },
+								"properties": {
+									"actorId": {
+										"type": "string"
+									}
+								},
 								"additionalProperties": false
 							}
 						}
@@ -622,7 +577,9 @@
 						"description": "Opaque session cookie created",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/DemoSession" }
+								"schema": {
+									"$ref": "#/components/schemas/DemoSession"
+								}
 							}
 						}
 					},
@@ -630,7 +587,9 @@
 						"description": "Unknown demo actor",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -638,7 +597,9 @@
 						"description": "Demo mode unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -655,7 +616,9 @@
 						"description": "Safe session",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/SafeSession" }
+								"schema": {
+									"$ref": "#/components/schemas/SafeSession"
+								}
 							}
 						}
 					},
@@ -663,12 +626,18 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/conversations": {
@@ -694,12 +663,18 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/conversations/{threadId}": {
@@ -712,7 +687,9 @@
 						"name": "threadId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
@@ -730,7 +707,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -738,12 +717,18 @@
 						"description": "Conversation unavailable or unauthorized",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/uploads": {
@@ -755,7 +740,9 @@
 					"required": true,
 					"content": {
 						"application/json": {
-							"schema": { "$ref": "#/components/schemas/CreateUploadRequest" },
+							"schema": {
+								"$ref": "#/components/schemas/CreateUploadRequest"
+							},
 							"examples": {
 								"image": {
 									"value": {
@@ -774,7 +761,9 @@
 						"description": "Upload authorization",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/UploadAuthorization" }
+								"schema": {
+									"$ref": "#/components/schemas/UploadAuthorization"
+								}
 							}
 						}
 					},
@@ -782,7 +771,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -790,12 +781,18 @@
 						"description": "Invalid attachment",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/demo/uploads/{attachmentId}": {
@@ -808,20 +805,38 @@
 						"name": "attachmentId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"requestBody": {
 					"required": true,
 					"content": {
-						"image/png": { "schema": { "type": "string", "format": "binary" } },
+						"image/png": {
+							"schema": {
+								"type": "string",
+								"format": "binary"
+							}
+						},
 						"image/jpeg": {
-							"schema": { "type": "string", "format": "binary" }
+							"schema": {
+								"type": "string",
+								"format": "binary"
+							}
 						},
 						"audio/mpeg": {
-							"schema": { "type": "string", "format": "binary" }
+							"schema": {
+								"type": "string",
+								"format": "binary"
+							}
 						},
-						"audio/wav": { "schema": { "type": "string", "format": "binary" } }
+						"audio/wav": {
+							"schema": {
+								"type": "string",
+								"format": "binary"
+							}
+						}
 					}
 				},
 				"responses": {
@@ -829,7 +844,9 @@
 						"description": "Bytes accepted",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/Attachment" }
+								"schema": {
+									"$ref": "#/components/schemas/Attachment"
+								}
 							}
 						}
 					},
@@ -837,7 +854,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -845,12 +864,18 @@
 						"description": "Attachment ownership, type, size or state conflict",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/uploads/{attachmentId}/complete": {
@@ -863,7 +888,9 @@
 						"name": "attachmentId",
 						"in": "path",
 						"required": true,
-						"schema": { "type": "string" }
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
@@ -871,7 +898,9 @@
 						"description": "Validated attachment",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/Attachment" }
+								"schema": {
+									"$ref": "#/components/schemas/Attachment"
+								}
 							}
 						}
 					},
@@ -879,7 +908,9 @@
 						"description": "Session missing or expired",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -887,12 +918,18 @@
 						"description": "Attachment unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
 				},
-				"security": [{ "sessionCookie": [] }]
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				]
 			}
 		},
 		"/v1/admin/kg/current": {
@@ -901,13 +938,19 @@
 				"tags": ["admin"],
 				"summary": "Get the current published KG pointer for the session tenant",
 				"description": "Backoffice-only. Returns current.json for the configured local publication root. Payload for P0-16/Harumi without Next scaffold.",
-				"security": [{ "sessionCookie": [] }],
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				],
 				"responses": {
 					"200": {
 						"description": "Current KG pointer",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/KgCurrentPointer" }
+								"schema": {
+									"$ref": "#/components/schemas/KgCurrentPointer"
+								}
 							}
 						}
 					},
@@ -915,7 +958,9 @@
 						"description": "Missing or invalid session",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -923,7 +968,9 @@
 						"description": "Requires backoffice role",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -931,7 +978,9 @@
 						"description": "No current pointer",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -939,7 +988,9 @@
 						"description": "KG admin store unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -951,7 +1002,11 @@
 				"operationId": "listAdminKgVersions",
 				"tags": ["admin"],
 				"summary": "List immutable published KG run_id packages",
-				"security": [{ "sessionCookie": [] }],
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				],
 				"responses": {
 					"200": {
 						"description": "Published versions",
@@ -977,7 +1032,9 @@
 						"description": "Missing or invalid session",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -985,7 +1042,9 @@
 						"description": "Requires backoffice role",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -993,7 +1052,9 @@
 						"description": "KG admin store unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -1006,19 +1067,29 @@
 				"tags": ["admin"],
 				"summary": "Compare two published KG packages",
 				"description": "Lightweight package diff for backoffice. Full consensus Jaccard gate remains CLI graph-diff.",
-				"security": [{ "sessionCookie": [] }],
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				],
 				"parameters": [
 					{
 						"name": "from",
 						"in": "query",
 						"required": true,
-						"schema": { "type": "string", "minLength": 3 }
+						"schema": {
+							"type": "string",
+							"minLength": 3
+						}
 					},
 					{
 						"name": "to",
 						"in": "query",
 						"required": true,
-						"schema": { "type": "string", "minLength": 3 }
+						"schema": {
+							"type": "string",
+							"minLength": 3
+						}
 					}
 				],
 				"responses": {
@@ -1026,7 +1097,9 @@
 						"description": "Package diff",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/KgPackageDiff" }
+								"schema": {
+									"$ref": "#/components/schemas/KgPackageDiff"
+								}
 							}
 						}
 					},
@@ -1034,7 +1107,9 @@
 						"description": "Missing from/to",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1042,7 +1117,9 @@
 						"description": "Missing or invalid session",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1050,7 +1127,9 @@
 						"description": "Requires backoffice role",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1058,7 +1137,9 @@
 						"description": "Version missing",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1066,7 +1147,9 @@
 						"description": "KG admin store unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -1079,12 +1162,18 @@
 				"tags": ["admin"],
 				"summary": "Point current.json at an immutable published run_id",
 				"description": "Backoffice promote for local demo root. Live GCS promote/rollback with lease remains CLI publish until cloud write is authorized.",
-				"security": [{ "sessionCookie": [] }],
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				],
 				"requestBody": {
 					"required": true,
 					"content": {
 						"application/json": {
-							"schema": { "$ref": "#/components/schemas/KgPromoteRequest" }
+							"schema": {
+								"$ref": "#/components/schemas/KgPromoteRequest"
+							}
 						}
 					}
 				},
@@ -1093,7 +1182,9 @@
 						"description": "Updated current pointer",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/KgCurrentPointer" }
+								"schema": {
+									"$ref": "#/components/schemas/KgCurrentPointer"
+								}
 							}
 						}
 					},
@@ -1101,7 +1192,9 @@
 						"description": "Invalid body",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1109,7 +1202,9 @@
 						"description": "Missing or invalid session",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1117,7 +1212,9 @@
 						"description": "Requires backoffice role",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1125,7 +1222,9 @@
 						"description": "run_id package missing",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1133,7 +1232,9 @@
 						"description": "KG admin store unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -1145,12 +1246,18 @@
 				"operationId": "rollbackAdminKg",
 				"tags": ["admin"],
 				"summary": "Rollback current.json to a previous immutable run_id",
-				"security": [{ "sessionCookie": [] }],
+				"security": [
+					{
+						"sessionCookie": []
+					}
+				],
 				"requestBody": {
 					"required": true,
 					"content": {
 						"application/json": {
-							"schema": { "$ref": "#/components/schemas/KgRollbackRequest" }
+							"schema": {
+								"$ref": "#/components/schemas/KgRollbackRequest"
+							}
 						}
 					}
 				},
@@ -1159,7 +1266,9 @@
 						"description": "Updated current pointer",
 						"content": {
 							"application/json": {
-								"schema": { "$ref": "#/components/schemas/KgCurrentPointer" }
+								"schema": {
+									"$ref": "#/components/schemas/KgCurrentPointer"
+								}
 							}
 						}
 					},
@@ -1167,7 +1276,9 @@
 						"description": "Invalid body",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1175,7 +1286,9 @@
 						"description": "Missing or invalid session",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1183,7 +1296,9 @@
 						"description": "Requires backoffice role",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1191,7 +1306,9 @@
 						"description": "run_id package missing",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					},
@@ -1199,7 +1316,9 @@
 						"description": "KG admin store unavailable",
 						"content": {
 							"application/problem+json": {
-								"schema": { "$ref": "#/components/schemas/Problem" }
+								"schema": {
+									"$ref": "#/components/schemas/Problem"
+								}
 							}
 						}
 					}
@@ -1288,31 +1407,22 @@
 				},
 				"additionalProperties": false
 			},
-			"CreateItemRequest": {
-				"type": "object",
-				"required": ["name"],
-				"properties": {
-					"name": {
-						"type": "string",
-						"minLength": 1,
-						"maxLength": 120
-					},
-					"metadata": {
-						"type": "object",
-						"additionalProperties": true,
-						"default": {}
-					}
-				},
-				"additionalProperties": false
-			},
 			"DemoActor": {
 				"type": "object",
 				"required": ["actorId", "label", "role", "recommended"],
 				"properties": {
-					"actorId": { "type": "string" },
-					"label": { "type": "string" },
-					"role": { "enum": ["customer", "backoffice"] },
-					"recommended": { "type": "boolean" }
+					"actorId": {
+						"type": "string"
+					},
+					"label": {
+						"type": "string"
+					},
+					"role": {
+						"enum": ["customer", "backoffice"]
+					},
+					"recommended": {
+						"type": "boolean"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1320,8 +1430,12 @@
 				"type": "object",
 				"required": ["status", "role"],
 				"properties": {
-					"status": { "const": "created" },
-					"role": { "enum": ["customer", "backoffice"] }
+					"status": {
+						"const": "created"
+					},
+					"role": {
+						"enum": ["customer", "backoffice"]
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1329,9 +1443,15 @@
 				"type": "object",
 				"required": ["transactionId", "disputeId", "caseId"],
 				"properties": {
-					"transactionId": { "const": "demo-transaction-1" },
-					"disputeId": { "const": "demo-dispute-1" },
-					"caseId": { "const": "demo-case-1" }
+					"transactionId": {
+						"const": "demo-transaction-1"
+					},
+					"disputeId": {
+						"const": "demo-dispute-1"
+					},
+					"caseId": {
+						"const": "demo-case-1"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1345,11 +1465,27 @@
 					"sessionVersion"
 				],
 				"properties": {
-					"userId": { "type": "string" },
-					"tenantId": { "type": "string" },
-					"roles": { "type": "array", "items": { "type": "string" } },
-					"capabilities": { "type": "array", "items": { "type": "string" } },
-					"sessionVersion": { "type": "integer" }
+					"userId": {
+						"type": "string"
+					},
+					"tenantId": {
+						"type": "string"
+					},
+					"roles": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"capabilities": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"sessionVersion": {
+						"type": "integer"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1357,9 +1493,15 @@
 				"type": "object",
 				"required": ["attachmentId", "kind", "mediaType", "status"],
 				"properties": {
-					"attachmentId": { "type": "string" },
-					"kind": { "enum": ["image", "audio"] },
-					"mediaType": { "type": "string" },
+					"attachmentId": {
+						"type": "string"
+					},
+					"kind": {
+						"enum": ["image", "audio"]
+					},
+					"mediaType": {
+						"type": "string"
+					},
 					"status": {
 						"enum": ["pending_upload", "pending_review", "ready", "rejected"]
 					}
@@ -1370,8 +1512,12 @@
 				"type": "object",
 				"required": ["attachment", "uploadUrl"],
 				"properties": {
-					"attachment": { "$ref": "#/components/schemas/Attachment" },
-					"uploadUrl": { "type": "string" }
+					"attachment": {
+						"$ref": "#/components/schemas/Attachment"
+					},
+					"uploadUrl": {
+						"type": "string"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1379,10 +1525,22 @@
 				"type": "object",
 				"required": ["kind", "mediaType", "byteSize", "filename"],
 				"properties": {
-					"kind": { "enum": ["image", "audio"] },
-					"mediaType": { "type": "string", "minLength": 1 },
-					"byteSize": { "type": "integer", "minimum": 1, "maximum": 10485760 },
-					"filename": { "type": "string", "minLength": 1 }
+					"kind": {
+						"enum": ["image", "audio"]
+					},
+					"mediaType": {
+						"type": "string",
+						"minLength": 1
+					},
+					"byteSize": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 10485760
+					},
+					"filename": {
+						"type": "string",
+						"minLength": 1
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1397,12 +1555,27 @@
 					"trace"
 				],
 				"properties": {
-					"threadId": { "type": "string" },
-					"tenantId": { "type": "string" },
-					"ownerUserId": { "type": "string" },
-					"revision": { "type": "integer" },
-					"messages": { "type": "array", "items": { "type": "object" } },
-					"trace": { "type": "object" }
+					"threadId": {
+						"type": "string"
+					},
+					"tenantId": {
+						"type": "string"
+					},
+					"ownerUserId": {
+						"type": "string"
+					},
+					"revision": {
+						"type": "integer"
+					},
+					"messages": {
+						"type": "array",
+						"items": {
+							"type": "object"
+						}
+					},
+					"trace": {
+						"type": "object"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1471,32 +1644,14 @@
 				},
 				"additionalProperties": false
 			},
-			"Item": {
-				"type": "object",
-				"required": ["id", "name", "metadata", "created_at"],
-				"properties": {
-					"id": {
-						"type": "string",
-						"format": "uuid"
-					},
-					"name": {
-						"type": "string"
-					},
-					"metadata": {
-						"type": "object",
-						"additionalProperties": true
-					},
-					"created_at": {
-						"type": "string",
-						"format": "date-time"
-					}
-				},
-				"additionalProperties": false
-			},
 			"SessionCreated": {
 				"type": "object",
 				"required": ["status"],
-				"properties": { "status": { "const": "created" } },
+				"properties": {
+					"status": {
+						"const": "created"
+					}
+				},
 				"additionalProperties": false
 			},
 			"TransactionEvidence": {
@@ -1510,12 +1665,26 @@
 					"version"
 				],
 				"properties": {
-					"transactionId": { "type": "string" },
-					"status": { "enum": ["approved", "declined", "pending", "reversed"] },
-					"amountBucket": { "enum": ["low", "medium", "high"] },
-					"currency": { "type": "string", "minLength": 3, "maxLength": 3 },
-					"provenance": { "const": "synthetic_local_fixture" },
-					"version": { "const": "dispute-demo-v1" }
+					"transactionId": {
+						"type": "string"
+					},
+					"status": {
+						"enum": ["approved", "declined", "pending", "reversed"]
+					},
+					"amountBucket": {
+						"enum": ["low", "medium", "high"]
+					},
+					"currency": {
+						"type": "string",
+						"minLength": 3,
+						"maxLength": 3
+					},
+					"provenance": {
+						"const": "synthetic_local_fixture"
+					},
+					"version": {
+						"const": "dispute-demo-v1"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1530,12 +1699,24 @@
 					"version"
 				],
 				"properties": {
-					"disputeId": { "type": "string" },
-					"transactionId": { "type": "string" },
-					"status": { "enum": ["open", "under_review", "escalated", "closed"] },
-					"priority": { "enum": ["normal", "high"] },
-					"provenance": { "const": "synthetic_local_fixture" },
-					"version": { "const": "dispute-demo-v1" }
+					"disputeId": {
+						"type": "string"
+					},
+					"transactionId": {
+						"type": "string"
+					},
+					"status": {
+						"enum": ["open", "under_review", "escalated", "closed"]
+					},
+					"priority": {
+						"enum": ["normal", "high"]
+					},
+					"provenance": {
+						"const": "synthetic_local_fixture"
+					},
+					"version": {
+						"const": "dispute-demo-v1"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1551,15 +1732,29 @@
 					"version"
 				],
 				"properties": {
-					"caseId": { "type": "string" },
-					"disputeId": { "type": "string" },
+					"caseId": {
+						"type": "string"
+					},
+					"disputeId": {
+						"type": "string"
+					},
 					"status": {
 						"enum": ["open", "pending_approval", "escalated", "denied"]
 					},
-					"createdAt": { "type": "string", "format": "date-time" },
-					"updatedAt": { "type": "string", "format": "date-time" },
-					"provenance": { "const": "synthetic_local_fixture" },
-					"version": { "const": "dispute-demo-v1" }
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"provenance": {
+						"const": "synthetic_local_fixture"
+					},
+					"version": {
+						"const": "dispute-demo-v1"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1580,15 +1775,23 @@
 			"ApprovalDecision": {
 				"type": "object",
 				"required": ["decision"],
-				"properties": { "decision": { "enum": ["approved", "rejected"] } },
+				"properties": {
+					"decision": {
+						"enum": ["approved", "rejected"]
+					}
+				},
 				"additionalProperties": false
 			},
 			"PendingEscalation": {
 				"type": "object",
 				"required": ["approvalId", "case"],
 				"properties": {
-					"approvalId": { "type": "string" },
-					"case": { "type": "object" }
+					"approvalId": {
+						"type": "string"
+					},
+					"case": {
+						"type": "object"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1596,8 +1799,12 @@
 				"type": "object",
 				"required": ["case", "action"],
 				"properties": {
-					"case": { "type": "object" },
-					"action": { "type": ["object", "null"] }
+					"case": {
+						"type": "object"
+					},
+					"action": {
+						"type": ["object", "null"]
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1634,10 +1841,22 @@
 						"type": "string",
 						"const": "bankai-local-kg-publication-v1"
 					},
-					"tenant_id": { "type": "string", "minLength": 1 },
-					"run_id": { "type": "string", "minLength": 3 },
-					"catalog_version": { "type": "string", "minLength": 1 },
-					"artifact_dir": { "type": "string", "minLength": 3 },
+					"tenant_id": {
+						"type": "string",
+						"minLength": 1
+					},
+					"run_id": {
+						"type": "string",
+						"minLength": 3
+					},
+					"catalog_version": {
+						"type": "string",
+						"minLength": 1
+					},
+					"artifact_dir": {
+						"type": "string",
+						"minLength": 3
+					},
 					"files": {
 						"type": "object",
 						"required": [
@@ -1665,8 +1884,13 @@
 						"type": "object",
 						"required": ["kdd_run_id", "case_catalog_version"],
 						"properties": {
-							"kdd_run_id": { "type": "string", "minLength": 1 },
-							"case_catalog_version": { "type": ["string", "null"] }
+							"kdd_run_id": {
+								"type": "string",
+								"minLength": 1
+							},
+							"case_catalog_version": {
+								"type": ["string", "null"]
+							}
 						},
 						"additionalProperties": false
 					}
@@ -1677,10 +1901,19 @@
 				"type": "object",
 				"required": ["run_id", "catalog_version", "graph_sha256", "is_current"],
 				"properties": {
-					"run_id": { "type": "string", "minLength": 3 },
-					"catalog_version": { "type": ["string", "null"] },
-					"graph_sha256": { "type": ["string", "null"] },
-					"is_current": { "type": "boolean" }
+					"run_id": {
+						"type": "string",
+						"minLength": 3
+					},
+					"catalog_version": {
+						"type": ["string", "null"]
+					},
+					"graph_sha256": {
+						"type": ["string", "null"]
+					},
+					"is_current": {
+						"type": "boolean"
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1700,17 +1933,39 @@
 					"to_edge_count"
 				],
 				"properties": {
-					"from_run_id": { "type": "string" },
-					"to_run_id": { "type": "string" },
-					"from_catalog_version": { "type": ["string", "null"] },
-					"to_catalog_version": { "type": ["string", "null"] },
-					"from_graph_sha256": { "type": ["string", "null"] },
-					"to_graph_sha256": { "type": ["string", "null"] },
-					"identical": { "type": "boolean" },
-					"from_node_count": { "type": ["integer", "null"] },
-					"to_node_count": { "type": ["integer", "null"] },
-					"from_edge_count": { "type": ["integer", "null"] },
-					"to_edge_count": { "type": ["integer", "null"] }
+					"from_run_id": {
+						"type": "string"
+					},
+					"to_run_id": {
+						"type": "string"
+					},
+					"from_catalog_version": {
+						"type": ["string", "null"]
+					},
+					"to_catalog_version": {
+						"type": ["string", "null"]
+					},
+					"from_graph_sha256": {
+						"type": ["string", "null"]
+					},
+					"to_graph_sha256": {
+						"type": ["string", "null"]
+					},
+					"identical": {
+						"type": "boolean"
+					},
+					"from_node_count": {
+						"type": ["integer", "null"]
+					},
+					"to_node_count": {
+						"type": ["integer", "null"]
+					},
+					"from_edge_count": {
+						"type": ["integer", "null"]
+					},
+					"to_edge_count": {
+						"type": ["integer", "null"]
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1718,7 +1973,10 @@
 				"type": "object",
 				"required": ["run_id"],
 				"properties": {
-					"run_id": { "type": "string", "minLength": 3 }
+					"run_id": {
+						"type": "string",
+						"minLength": 3
+					}
 				},
 				"additionalProperties": false
 			},
@@ -1726,7 +1984,10 @@
 				"type": "object",
 				"required": ["to_run_id"],
 				"properties": {
-					"to_run_id": { "type": "string", "minLength": 3 }
+					"to_run_id": {
+						"type": "string",
+						"minLength": 3
+					}
 				},
 				"additionalProperties": false
 			}
