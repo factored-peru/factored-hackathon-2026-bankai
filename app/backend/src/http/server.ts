@@ -12,6 +12,7 @@ import { LocalBucket, type ObjectBucket } from "../integrations/bucket.js";
 import { CachingSessionStore } from "../integrations/cache/caching-session-store.js";
 import { type Cache, LocalCache } from "../integrations/cache.js";
 import { type Database, LocalDatabase } from "../integrations/database.js";
+import { createControlPlaneConversationRuntime } from "../integrations/evaluation/create-control-plane-conversation-runtime.js";
 import { UserProfileBackedActorDirectory } from "../integrations/identity/user-profile-backed-actor-directory.js";
 import {
 	createKnowledgeGraphRuntime,
@@ -36,6 +37,10 @@ import {
 	createProductiveDataStores,
 	type ProductiveDataStores,
 } from "../integrations/productive-data-stores.js";
+import { createGuardrailProvider } from "../integrations/providers/guardrail-provider-factory.js";
+import { HeuristicHitlDecisionSignalProvider } from "../integrations/providers/heuristic-hitl-decision-signal-provider.js";
+import { createKnowledgeGraphSelector } from "../integrations/providers/knowledge-graph-selector-runtime.js";
+import { SafeInformationalModelProvider } from "../integrations/providers/safe-informational-model-provider.js";
 import { createVertexBaselineChatProvider } from "../integrations/providers/vertex-baseline-chat-provider.js";
 import {
 	createLlmCacheRuntime,
@@ -106,10 +111,25 @@ export async function buildServer(options: BuildServerOptions = {}) {
 	validateRuntimeConfiguration(runtimeEnv);
 	const knowledgeGraphRuntime = createKnowledgeGraphRuntime(runtimeEnv);
 	const kgAdminService = createKgAdminService(runtimeEnv);
+	let knowledgeGraphJev:
+		| Awaited<ReturnType<typeof createKnowledgeGraphSelector>>
+		| undefined;
+	if (
+		knowledgeGraphRuntime !== null &&
+		runtimeEnv.JEV_ENABLED &&
+		runtimeEnv.VERTEX_AI_ENABLED
+	) {
+		knowledgeGraphJev = await createKnowledgeGraphSelector(runtimeEnv).catch(
+			() => undefined,
+		);
+	}
 	const ragRetrievalRuntime =
 		knowledgeGraphRuntime === null
 			? null
-			: createRagRetrievalRuntime({ knowledgeGraph: knowledgeGraphRuntime });
+			: createRagRetrievalRuntime({
+					knowledgeGraph: knowledgeGraphRuntime,
+					...(knowledgeGraphJev === undefined ? {} : { knowledgeGraphJev }),
+				});
 	const productiveDataStores =
 		options.productiveDataStores !== undefined
 			? options.productiveDataStores
@@ -223,6 +243,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
 					integrations.llmCacheRuntime?.llmCache ??
 					new NoopLlmEphemeralCache(),
 				knowledgeGraphRuntime,
+				ragRetrievalRuntime,
 				productive: productiveDataStores,
 			})
 		: undefined;
@@ -253,6 +274,7 @@ async function createDemoRuntime(
 		sessionRuntime?: SessionRuntime;
 		llmCache?: LlmEphemeralCache;
 		knowledgeGraphRuntime?: KnowledgeGraphRuntime | null;
+		ragRetrievalRuntime?: RagRetrievalRuntime | null;
 		productive?: ProductiveDataStores | null;
 		baselineObserver?: BaselineRunObserver;
 	} = {},
@@ -298,7 +320,15 @@ async function createDemoRuntime(
 						? {}
 						: { observer: options.baselineObserver }),
 				})
-			: deterministicConversationRunner;
+			: runtimeEnv.CHAT_PIPELINE === "control_plane"
+				? createControlPlaneConversationRuntime({
+						sessions,
+						signal: new HeuristicHitlDecisionSignalProvider(),
+						model: new SafeInformationalModelProvider(),
+						guardrail: createGuardrailProvider(runtimeEnv),
+						ragRuntime: options.ragRetrievalRuntime ?? null,
+					}).runner
+				: deterministicConversationRunner;
 	const conversation: ConversationHttpRuntime = {
 		sessions,
 		publisher,

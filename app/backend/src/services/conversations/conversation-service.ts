@@ -172,6 +172,7 @@ export class ConversationService {
 					...snapshot.trace,
 					status: result.status,
 					reasonCode: result.reasonCode ?? null,
+					decisionId: result.decisionId ?? null,
 					workflowId: result.workflowId ?? null,
 					approvalId: result.approvalId ?? null,
 					updatedAt: completedAt,
@@ -179,13 +180,29 @@ export class ConversationService {
 			);
 			if (await this.store.save(completed, snapshot.revision))
 				snapshot = completed;
-			await this.emit(
-				snapshot,
+			const completionEvent =
 				result.status === "pending_approval"
 					? "hitl.created"
-					: "assistant.completed",
-				{ status: result.status, response },
-			);
+					: result.status === "awaiting_clarification"
+						? "run.state"
+						: "assistant.completed";
+			await this.emit(snapshot, completionEvent, {
+				status: result.status,
+				response,
+				...(result.clarificationId === undefined
+					? {}
+					: { clarificationId: result.clarificationId }),
+				...(result.approvalId === undefined
+					? {}
+					: { approvalId: result.approvalId }),
+			});
+			if (result.status === "awaiting_clarification") {
+				await this.emit(snapshot, "assistant.completed", {
+					status: result.status,
+					response,
+					clarificationId: result.clarificationId,
+				});
+			}
 			if (result.status === "pending_approval") {
 				await this.publisher.publish({
 					tenantId: snapshot.tenantId,

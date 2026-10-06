@@ -2,30 +2,70 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ControlledComparableRunner } from "../src/integrations/evaluation/controlled-comparable-runner.js";
+import {
+	createTaskCompletionJudgeFromEnv,
+	JevTaskCompletionJudge,
+} from "../src/integrations/providers/jev-task-completion-judge.js";
+import { createTrajectoryJevAsJudge } from "../src/integrations/providers/trajectory-jev-as-judge.js";
+import { TrajectoryJevJudgeEvaluator } from "../src/integrations/providers/trajectory-jev-judge-evaluator.js";
 import {
 	evaluateTechnicalCompleteness,
 	runAbComparison,
 } from "../src/services/evaluation/ab-comparison.js";
-import { parsePipelineRunRecord } from "../src/services/evaluation/ab-contracts.js";
+import {
+	evaluationScenarioSchema,
+	parsePipelineRunRecord,
+} from "../src/services/evaluation/ab-contracts.js";
 import { BaselineComparableRunner } from "../src/services/evaluation/baseline-comparable-runner.js";
-import { ControlledComparableRunner } from "../src/services/evaluation/controlled-comparable-runner.js";
+import {
+	assertSanitizedTrajectory,
+	toSanitizedTrajectory,
+} from "../src/services/evaluation/sanitized-trajectory.js";
 import { SyntheticTaskCompletionJudge } from "../src/services/evaluation/task-completion-judge.js";
 import {
 	abEvaluationScenarios,
+	KG_CASE_ALLOWLIST,
+	STRUCTURED_QUERY_PLAN_ALLOWLIST,
 	selectAbScenarios,
 } from "./fixtures/ab-evaluation-scenarios.js";
 
 describe("local A/B evaluation", () => {
-	test("exposes phase-1 structured plans and phase-2 ADR 0004 casuistics", () => {
-		expect(selectAbScenarios("phase-1")).toHaveLength(3);
+	test("exposes polarity/locale Latam corpus with catalog allowlists", () => {
+		expect(selectAbScenarios("phase-1").length).toBeGreaterThanOrEqual(3);
 		expect(selectAbScenarios("phase-2").length).toBeGreaterThanOrEqual(20);
-		expect(abEvaluationScenarios.map((s) => s.expectedQueryPlanId)).toEqual(
-			expect.arrayContaining([
-				"customer_products",
-				"product_status",
-				"recent_transactions",
-			]),
+		expect(abEvaluationScenarios.length).toBeGreaterThanOrEqual(55);
+		expect(abEvaluationScenarios.length).toBeLessThanOrEqual(70);
+		for (const s of abEvaluationScenarios) {
+			expect(() => evaluationScenarioSchema.parse(s)).not.toThrow();
+		}
+		const locales = new Set(abEvaluationScenarios.map((s) => s.locale));
+		expect(locales.has("es")).toBe(true);
+		expect(locales.has("pt")).toBe(true);
+		expect(abEvaluationScenarios.some((s) => s.polarity === "positive")).toBe(
+			true,
 		);
+		expect(abEvaluationScenarios.some((s) => s.polarity === "negative")).toBe(
+			true,
+		);
+		expect(
+			abEvaluationScenarios.filter((s) => s.locale === "pt").length,
+		).toBeGreaterThanOrEqual(8);
+		for (const s of abEvaluationScenarios) {
+			if (s.polarity === "positive" && s.expectedRoute === "structured_rag") {
+				expect(
+					(STRUCTURED_QUERY_PLAN_ALLOWLIST as readonly string[]).includes(
+						s.expectedQueryPlanId ?? "",
+					),
+				).toBe(true);
+			}
+			if (s.polarity === "positive" && s.expectedRoute === "kg_rag") {
+				const caseId = s.researchRef?.match(/C[1-5]/)?.[0] ?? "";
+				expect((KG_CASE_ALLOWLIST as readonly string[]).includes(caseId)).toBe(
+					true,
+				);
+			}
+		}
 		expect(
 			abEvaluationScenarios.some((s) =>
 				s.researchRef?.includes("adr-0004:adversarial-autoridad"),
@@ -37,6 +77,67 @@ describe("local A/B evaluation", () => {
 		expect(
 			abEvaluationScenarios.some((s) => s.prompt.includes("gerente del banco")),
 		).toBe(true);
+	});
+
+	test("JEV judge system instructions stay English", async () => {
+		let body: unknown;
+		const judge = createTrajectoryJevAsJudge({
+			baseUrl: "https://jev.example.test",
+			apiKey: "secret",
+			model: "jev-latest",
+			minConfidence: 0.7,
+			timeoutMs: 1000,
+			fetch: (async (_url: string, init?: RequestInit) => {
+				body = JSON.parse(String(init?.body ?? "{}"));
+				return new Response(
+					JSON.stringify({
+						answers: {
+							trajectory_complete: { type: "noul", noul: 0.9 },
+							routing_quality: { type: "score", score: 3, confidence: 0.9 },
+						},
+					}),
+					{ status: 200 },
+				);
+			}) as unknown as typeof fetch,
+		});
+		await judge.evaluate({
+			workflowLabel: "workflow_B",
+			outputs: {
+				steps: [],
+				status: "completed",
+				route: "llm",
+				toolOutcome: "none",
+				hasError: false,
+				hasQueryPlan: false,
+				gates: {
+					controlPlane: true,
+					privacy: true,
+					guardrail: true,
+					policy: true,
+				},
+				retrievalAttempted: false,
+				retrievalSucceeded: false,
+			},
+			referenceOutputs: {
+				steps: [],
+				status: "completed",
+				route: "llm",
+				toolOutcome: "none",
+				hasError: false,
+				hasQueryPlan: false,
+				gates: {
+					controlPlane: true,
+					privacy: true,
+					guardrail: true,
+					policy: true,
+				},
+				retrievalAttempted: false,
+				retrievalSucceeded: false,
+			},
+		});
+		const text = JSON.stringify(body);
+		expect(text).toContain("did the observed trajectory match");
+		expect(text).not.toMatch(/¿|trayectoria observada|cumplió el outcome/i);
 	});
 
 	test("rejects pipeline records that carry prompts or SQL", () => {
@@ -85,27 +186,254 @@ describe("local A/B evaluation", () => {
 		expect(controlled.queryPlanId).toBe("customer_products");
 	});
 
-	test("synthetic judge stays skipped", async () => {
-		const judged = await new SyntheticTaskCompletionJudge().evaluate({
-			scenarioId: "x",
-			pipeline: "controlled",
+	test("deny and guardrail references align toolOutcome for match judging", async () => {
+		const deny = abEvaluationScenarios.find(
+			(s) => s.scenarioId === "adr-policy-deny-transfer",
+		);
+		const guard = abEvaluationScenarios.find(
+			(s) => s.scenarioId === "adr-guardrail-input-block",
+		);
+		expect(deny).toBeDefined();
+		expect(guard).toBeDefined();
+		if (!deny || !guard) return;
+		const denyRun = await new ControlledComparableRunner().run(deny);
+		const guardRun = await new ControlledComparableRunner().run(guard);
+		const denyProj = toSanitizedTrajectory(deny, denyRun);
+		const guardProj = toSanitizedTrajectory(guard, guardRun);
+		expect(denyProj.workflowLabel).toBe("workflow_B");
+		expect(denyProj.outputs.toolOutcome).toBe("denied");
+		expect(denyProj.referenceOutputs.toolOutcome).toBe("denied");
+		expect(denyProj.outputs.hasError).toBe(true);
+		expect(denyProj.referenceOutputs.hasError).toBe(true);
+		expect(guardProj.outputs.toolOutcome).toBe("skipped");
+		expect(guardProj.referenceOutputs.toolOutcome).toBe("skipped");
+	});
+
+	test("trajectory JEV judge state uses workflow labels only", async () => {
+		let body: unknown;
+		const scenario = selectAbScenarios("phase-1")[0];
+		if (!scenario) throw new Error("missing scenario");
+		const record = await new ControlledComparableRunner().run(scenario);
+		await new JevTaskCompletionJudge({
+			baseUrl: "https://jev.example.test",
+			apiKey: "secret",
+			model: "jev-latest",
+			minConfidence: 0.7,
+			timeoutMs: 1000,
+			fetch: (async (_url: string, init?: RequestInit) => {
+				body = JSON.parse(String(init?.body ?? "{}"));
+				return new Response(
+					JSON.stringify({
+						answers: {
+							trajectory_complete: { type: "noul", noul: 0.9 },
+							routing_quality: { type: "score", score: 3, confidence: 0.9 },
+						},
+					}),
+					{ status: 200 },
+				);
+			}) as unknown as typeof fetch,
+		}).evaluate({ scenario, record });
+		const text = JSON.stringify(body);
+		expect(text).toContain("workflow_B");
+		expect(text).not.toContain("baseline");
+		expect(text).not.toContain("controlled");
+		expect(text).not.toContain("control-plane");
+		expect(text).not.toContain("control plane");
+	});
+
+	test("sanitized trajectory projection has no forbidden content keys", async () => {
+		const scenario = selectAbScenarios("phase-1")[0];
+		if (!scenario) throw new Error("missing scenario");
+		const record = await new ControlledComparableRunner().run(scenario);
+		const projection = toSanitizedTrajectory(scenario, record);
+		expect(() => assertSanitizedTrajectory(projection)).not.toThrow();
+		const text = JSON.stringify(projection);
+		expect(text).not.toContain("prompt");
+		expect(text).not.toContain(scenario.prompt);
+	});
+
+	test("trajectory JEV judge maps high noul to pass", async () => {
+		const judge = createTrajectoryJevAsJudge({
+			baseUrl: "https://jev.example.test",
+			apiKey: "secret",
+			model: "jev-latest",
+			minConfidence: 0.7,
+			timeoutMs: 1000,
+			fetch: (async () =>
+				new Response(
+					JSON.stringify({
+						answers: {
+							trajectory_complete: { type: "noul", noul: 0.91 },
+							routing_quality: {
+								type: "score",
+								score: 3,
+								confidence: 0.9,
+							},
+						},
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				)) as unknown as typeof fetch,
 		});
-		expect(judged).toMatchObject({
-			label: "skipped",
-			reasonCode: "judge_not_configured",
+		const scenario = selectAbScenarios("phase-1")[0];
+		if (!scenario) throw new Error("missing scenario");
+		const record = await new ControlledComparableRunner().run(scenario);
+		const result = await new JevTaskCompletionJudge({
+			baseUrl: "https://jev.example.test",
+			apiKey: "secret",
+			model: "jev-latest",
+			minConfidence: 0.7,
+			timeoutMs: 1000,
+			fetch: (async () =>
+				new Response(
+					JSON.stringify({
+						answers: {
+							trajectory_complete: { type: "noul", noul: 0.91 },
+							routing_quality: { type: "score", score: 3, confidence: 0.9 },
+						},
+					}),
+					{ status: 200 },
+				)) as unknown as typeof fetch,
+		}).evaluate({ scenario, record });
+		expect(result).toMatchObject({
+			metric: "task_completion_semantic",
+			passed: true,
+			label: "pass",
+			reasonCode: null,
+			score: 0.91,
+		});
+		const direct = await judge.evaluate({
+			workflowLabel: "workflow_B",
+			outputs: toSanitizedTrajectory(scenario, record).outputs,
+			referenceOutputs: toSanitizedTrajectory(scenario, record)
+				.referenceOutputs,
+		});
+		expect(direct.passed).toBe(true);
+	});
+
+	test("trajectory JEV judge maps low noul and transport errors", async () => {
+		const scenario = selectAbScenarios("phase-1")[0];
+		if (!scenario) throw new Error("missing scenario");
+		const record = await new ControlledComparableRunner().run(scenario);
+
+		const low = await new JevTaskCompletionJudge({
+			baseUrl: "https://jev.example.test",
+			apiKey: "secret",
+			model: "jev-latest",
+			minConfidence: 0.7,
+			timeoutMs: 1000,
+			fetch: (async () =>
+				new Response(
+					JSON.stringify({
+						answers: {
+							trajectory_complete: { type: "noul", noul: 0.2 },
+							routing_quality: { type: "score", score: 0, confidence: 0.5 },
+						},
+					}),
+					{ status: 200 },
+				)) as unknown as typeof fetch,
+		}).evaluate({ scenario, record });
+		expect(low).toMatchObject({
+			passed: false,
+			label: "fail",
+			reasonCode: "jev_low_confidence",
+			score: 0.2,
+		});
+
+		const down = await new JevTaskCompletionJudge({
+			baseUrl: "https://jev.example.test",
+			apiKey: "secret",
+			model: "jev-latest",
+			minConfidence: 0.7,
+			timeoutMs: 1000,
+			fetch: (async () => {
+				throw new Error("network");
+			}) as unknown as typeof fetch,
+		}).evaluate({ scenario, record });
+		expect(down.reasonCode).toBe("jev_unavailable");
+		expect(down.passed).toBe(false);
+	});
+
+	test("factory auto uses synthetic when JEV disabled", () => {
+		const judge = createTaskCompletionJudgeFromEnv(
+			{
+				JEV_ENABLED: false,
+				JEV_BASE_URL: "",
+				JEV_API_KEY: "",
+				JEV_MODEL: "",
+				JEV_MIN_CONFIDENCE: 0.7,
+				JEV_TIMEOUT_MS: 1000,
+			},
+			"auto",
+		);
+		expect(judge).toBeInstanceOf(SyntheticTaskCompletionJudge);
+	});
+
+	test("JudgeEvaluator adapter emits mode jev", async () => {
+		const evaluator = new TrajectoryJevJudgeEvaluator({
+			baseUrl: "https://jev.example.test",
+			apiKey: "secret",
+			model: "jev-latest",
+			minConfidence: 0.7,
+			timeoutMs: 1000,
+			fetch: (async () =>
+				new Response(
+					JSON.stringify({
+						answers: {
+							trajectory_complete: { type: "noul", noul: 0.8 },
+							routing_quality: { type: "score", score: 2, confidence: 0.8 },
+						},
+					}),
+					{ status: 200 },
+				)) as unknown as typeof fetch,
+		});
+		const results = await evaluator.evaluate({
+			traceId: "t",
+			fixtureId: "f",
+			route: "structured_rag",
+			expectedRoute: "structured_rag",
+			trajectory: [{ name: "policy", route: "policy" }],
+			expectedTrajectory: [{ name: "policy", route: "policy" }],
+			policyAllowed: true,
+			budgetExceeded: false,
+			evidenceVersion: null,
+			catalogLoaded: true,
+			catalogLoadedBeforeSpecializedJev: true,
+			tenantIsolated: true,
+			guardrailPassed: true,
+			responseContainsSensitiveContent: false,
+			resultVerified: true,
+			policyVersion: "v1",
+			catalogVersion: "v1",
+			controlPlaneInvoked: true,
+			privacyGateInvoked: true,
+			guardrailInvoked: true,
+			retrievalInvoked: true,
+			retrievalSuccessCount: 1,
+		});
+		expect(results).toHaveLength(1);
+		expect(results[0]).toMatchObject({
+			mode: "jev",
+			evaluator: "trajectory_jev_as_judge",
+			passed: true,
 		});
 	});
 
 	test("file sink compare writes sanitized summary without prompts", async () => {
 		const root = mkdtempSync(join(tmpdir(), "ab-eval-"));
+		const sample = selectAbScenarios("phase-1").slice(0, 3);
 		try {
 			const { summary, metrics, runs } = await runAbComparison({
-				scenarios: selectAbScenarios("phase-1"),
+				scenarios: sample,
 				outRoot: root,
 				runId: "test-run",
+				judge: new SyntheticTaskCompletionJudge(),
+				controlled: new ControlledComparableRunner(),
 			});
 			expect(summary.scenarioCount).toBe(3);
 			expect(summary.technicalFailCount).toBe(0);
+			expect(summary.judgeSkippedCount).toBe(6);
+			expect(summary.judgeJevCount).toBe(0);
+			expect(summary.semantic).toBeNull();
 			expect(runs).toHaveLength(6);
 			const summaryText = readFileSync(
 				join(root, "test-run", "summary.json"),
@@ -114,7 +442,7 @@ describe("local A/B evaluation", () => {
 			expect(summaryText).not.toContain("¿");
 			expect(summaryText).not.toContain("productos");
 			expect(metrics.every((m) => !JSON.stringify(m).includes("¿"))).toBe(true);
-			for (const scenario of selectAbScenarios("phase-1")) {
+			for (const scenario of sample) {
 				const controlled = runs.find(
 					(r) =>
 						r.scenarioId === scenario.scenarioId && r.pipeline === "controlled",
@@ -124,6 +452,50 @@ describe("local A/B evaluation", () => {
 				const technical = evaluateTechnicalCompleteness(scenario, controlled);
 				expect(technical.every((m) => m.passed)).toBe(true);
 			}
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	test("file sink with mocked JEV judge records judgeJevCount and byPolarity", async () => {
+		const root = mkdtempSync(join(tmpdir(), "ab-eval-jev-"));
+		const sample = selectAbScenarios("phase-1").slice(0, 3);
+		try {
+			const mockFetch = (async () =>
+				new Response(
+					JSON.stringify({
+						answers: {
+							trajectory_complete: { type: "noul", noul: 0.85 },
+							routing_quality: { type: "score", score: 2, confidence: 0.85 },
+						},
+					}),
+					{ status: 200 },
+				)) as unknown as typeof fetch;
+			const { summary } = await runAbComparison({
+				scenarios: sample,
+				outRoot: root,
+				runId: "jev-run",
+				judge: new JevTaskCompletionJudge({
+					baseUrl: "https://jev.example.test",
+					apiKey: "secret",
+					model: "jev-latest",
+					minConfidence: 0.7,
+					timeoutMs: 1000,
+					fetch: mockFetch,
+				}),
+				controlled: new ControlledComparableRunner(),
+			});
+			expect(summary.judgeSkippedCount).toBe(0);
+			expect(summary.judgeJevCount).toBe(6);
+			expect(summary.semantic).not.toBeNull();
+			expect(summary.semantic?.workflow_A.passCount).toBeGreaterThanOrEqual(0);
+			expect(summary.semantic?.workflow_B.passCount).toBe(3);
+			expect(summary.semantic?.byPolarity.positive.workflow_B.passCount).toBe(
+				3,
+			);
+			expect(summary.semantic?.byPolarity.negative.workflow_B.passCount).toBe(
+				0,
+			);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

@@ -374,4 +374,50 @@ port = 9001
 			).GCS_GRAPH_BUCKET,
 		).toBe("kg-artifacts");
 	});
+
+	test("control_plane chat pipeline requires agentic opt-in and rejects baseline mix", () => {
+		expect(envSchema.parse({}).CHAT_PIPELINE).toBe("demo");
+		expect(
+			envSchema.parse({ CHAT_PIPELINE: "control_plane" }).CHAT_PIPELINE,
+		).toBe("control_plane");
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({ CHAT_PIPELINE: "control_plane" }),
+			),
+		).toThrow("SVC-CORE-9022");
+		expect(() =>
+			validateRuntimeConfiguration(
+				envSchema.parse({
+					CHAT_PIPELINE: "control_plane",
+					AGENTIC_CHAT_ENABLED: true,
+					CHAT_ENABLED: true,
+					REALTIME_ENABLED: true,
+					FIRESTORE_ENABLED: true,
+					SESSION_STORE_ENABLED: true,
+					KV_URL: "redis://127.0.0.1:6379",
+					PRIVATE_DATA_ENCRYPTION_KEY: "a".repeat(32),
+					BIGQUERY_ENABLED: true,
+					GOOGLE_CLOUD_PROJECT: "proj",
+					GOOGLE_CLOUD_LOCATION: "us-central1",
+					BIGQUERY_DATASET: "dataset",
+					JEV_ENABLED: true,
+					JEV_BASE_URL: "https://jev.example.test",
+					JEV_API_KEY: "jev-key",
+					JEV_MODEL: "jev-model",
+					VERTEX_AI_ENABLED: true,
+					VERTEX_AI_PROJECT_ID: "proj",
+					VERTEX_AI_LOCATION: "us-central1",
+					VERTEX_AI_MODEL: "model",
+					MODEL_ARMOR_ENABLED: true,
+					MODEL_ARMOR_PROJECT_ID: "proj",
+					MODEL_ARMOR_LOCATION: "us-central1",
+					MODEL_ARMOR_INSPECT_TEMPLATE:
+						"projects/proj/locations/us-central1/templates/inspect",
+					GCS_ENABLED: true,
+					CORS_ALLOWED_ORIGINS: "http://localhost:3001",
+					BASELINE_CHAT_ENABLED: true,
+				}),
+			),
+		).toThrow("SVC-CORE-9022");
+	});
 });

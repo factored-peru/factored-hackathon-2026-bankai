@@ -55,28 +55,63 @@ export class DisputePolicyEngine implements PolicyEngine {
 		signal: Parameters<PolicyEngine["evaluate"]>[0]["signal"];
 	}): Promise<PolicyDecision> {
 		const operation = operationFrom(input);
-		const definition = operation
-			? disputeCapabilityMatrixByActionId[operation]
-			: null;
+		if (operation === null) {
+			// Informational answerable path (ADR 0004): no matrix action nominated.
+			if (input.modelDecision.kind !== "tool") {
+				return {
+					outcome: "ALLOW",
+					decisionId: stableHash({
+						session: input.session.sessionId,
+						operation: null,
+						outcome: "ALLOW",
+					}),
+					policyId: DISPUTE_POLICY_ID,
+					policyVersion: DISPUTE_CAPABILITY_MATRIX_VERSION,
+					riskLevel: "low",
+					reasons: ["informational_no_dispute_operation"],
+				};
+			}
+			return {
+				outcome: "DENY",
+				decisionId: stableHash({
+					session: input.session.sessionId,
+					operation: null,
+					outcome: "DENY",
+				}),
+				policyId: DISPUTE_POLICY_ID,
+				policyVersion: DISPUTE_CAPABILITY_MATRIX_VERSION,
+				riskLevel: "low",
+				reasons: ["capability_or_role_denied"],
+			};
+		}
+		const definition = disputeCapabilityMatrixByActionId[operation];
+		if (!definition) {
+			return {
+				outcome: "DENY",
+				decisionId: stableHash({
+					session: input.session.sessionId,
+					operation,
+					outcome: "DENY",
+				}),
+				policyId: DISPUTE_POLICY_ID,
+				policyVersion: DISPUTE_CAPABILITY_MATRIX_VERSION,
+				riskLevel: "low",
+				reasons: ["capability_or_role_denied"],
+			};
+		}
 		const sessionRoles = canonicalizeDisputeRoles(input.session.roles);
 		const rolePermitted = Boolean(
-			definition?.roles.some((role) => sessionRoles.includes(role)),
+			definition.roles.some((role) => sessionRoles.includes(role)),
 		);
 		const capabilityPermitted = Boolean(
-			definition &&
-				definition.capability.length > 0 &&
+			definition.capability.length > 0 &&
 				input.session.capabilities.includes(definition.capability),
 		);
 		const permitted = Boolean(
-			definition &&
-				definition.outcome !== "DENY" &&
-				rolePermitted &&
-				capabilityPermitted,
+			definition.outcome !== "DENY" && rolePermitted && capabilityPermitted,
 		);
 		const outcome =
-			definition?.outcome === "DENY" || !permitted
-				? "DENY"
-				: (definition?.outcome ?? "DENY");
+			definition.outcome === "DENY" || !permitted ? "DENY" : definition.outcome;
 		return {
 			outcome,
 			decisionId: stableHash({
@@ -89,10 +124,10 @@ export class DisputePolicyEngine implements PolicyEngine {
 			riskLevel: outcome === "REQUIRE_APPROVAL" ? "medium" : "low",
 			reasons: [
 				outcome === "DENY"
-					? definition?.outcome === "DENY"
+					? definition.outcome === "DENY"
 						? "bank_dispute_action_not_supported"
 						: "capability_or_role_denied"
-					: (operation ?? "no_dispute_operation"),
+					: operation,
 			],
 		};
 	}

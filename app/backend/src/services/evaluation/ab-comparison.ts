@@ -1,12 +1,13 @@
 import type {
 	AbMetricResult,
+	ComparablePipelineRunner,
 	EvaluationScenario,
 	PipelineRunRecord,
 } from "./ab-contracts.js";
 import { BaselineComparableRunner } from "./baseline-comparable-runner.js";
-import { ControlledComparableRunner } from "./controlled-comparable-runner.js";
 import {
 	type AbCompareSummary,
+	buildSemanticSummary,
 	FileEvaluationReportSink,
 } from "./file-evaluation-report-sink.js";
 import {
@@ -104,6 +105,8 @@ export type AbCompareOptions = Readonly<{
 	outRoot: string;
 	runId: string;
 	judge?: TaskCompletionJudge;
+	/** Controlled pipeline composition root (integrations). */
+	controlled: ComparablePipelineRunner;
 }>;
 
 export type AbCompareResult = Readonly<{
@@ -116,7 +119,7 @@ export async function runAbComparison(
 	options: AbCompareOptions,
 ): Promise<AbCompareResult> {
 	const baseline = new BaselineComparableRunner();
-	const controlled = new ControlledComparableRunner();
+	const controlled = options.controlled;
 	const judge = options.judge ?? new SyntheticTaskCompletionJudge();
 	const sink = new FileEvaluationReportSink(options.outRoot);
 	const outDir = await sink.begin(options.runId);
@@ -142,10 +145,10 @@ export async function runAbComparison(
 			metrics.push(metric);
 			await sink.writeMetric(outDir, metric);
 		}
-		for (const pipeline of ["baseline", "controlled"] as const) {
+		for (const record of [baselineRun, controlledRun]) {
 			const judged = await judge.evaluate({
-				scenarioId: scenario.scenarioId,
-				pipeline,
+				scenario,
+				record,
 			});
 			metrics.push(judged);
 			await sink.writeMetric(outDir, judged);
@@ -155,6 +158,9 @@ export async function runAbComparison(
 	const technicalOnly = metrics.filter(
 		(m) => m.metric !== "task_completion_semantic",
 	);
+	const semantic = metrics.filter(
+		(m) => m.metric === "task_completion_semantic",
+	);
 	const summary: AbCompareSummary = {
 		runId: options.runId,
 		scenarioCount: options.scenarios.length,
@@ -162,9 +168,13 @@ export async function runAbComparison(
 		controlledRuns: runs.filter((r) => r.pipeline === "controlled").length,
 		technicalPassCount: technicalOnly.filter((m) => m.passed).length,
 		technicalFailCount: technicalOnly.filter((m) => !m.passed).length,
-		judgeSkippedCount: metrics.filter(
+		judgeSkippedCount: semantic.filter(
 			(m) => m.reasonCode === "judge_not_configured",
 		).length,
+		judgeJevCount: semantic.filter(
+			(m) => m.reasonCode !== "judge_not_configured",
+		).length,
+		semantic: buildSemanticSummary(semantic, options.scenarios),
 		outDir,
 		gate: "informational",
 		containsSourceValues: false,
@@ -177,6 +187,10 @@ export function controlledTechnicalFailed(
 	metrics: readonly AbMetricResult[],
 ): boolean {
 	return metrics.some(
-		(m) => m.pipeline === "controlled" && m.label === "fail" && !m.passed,
+		(m) =>
+			m.pipeline === "controlled" &&
+			m.metric !== "task_completion_semantic" &&
+			m.label === "fail" &&
+			!m.passed,
 	);
 }

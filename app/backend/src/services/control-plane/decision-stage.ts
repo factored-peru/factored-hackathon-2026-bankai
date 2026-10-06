@@ -94,14 +94,53 @@ export class AgentDecisionStage {
 			return { status: "failed", reasonCode: "jev_unavailable" };
 		}
 		const signal = decisionSignalSchema.parse(rawSignal);
+		const domainConfidenceThreshold =
+			this.options.domainConfidenceThreshold ??
+			defaultDomainConfidenceThreshold;
+		const routeConfidenceThreshold =
+			this.options.routeConfidenceThreshold ?? defaultRouteConfidenceThreshold;
+
+		if (
+			signal.domain === "out_of_domain" &&
+			signal.domainConfidence >= domainConfidenceThreshold
+		) {
+			return {
+				...input,
+				signal,
+				modelDecision: {
+					kind: "route",
+					route: "out_of_domain",
+					responseKey: "out_of_domain",
+				},
+				route: { route: "out_of_domain", responseKey: "out_of_domain" },
+			};
+		}
+
+		// ADR 0004/0007: requiresEscalation synthesizes escalation.request; Policy authorizes.
+		if (signal.requiresEscalation && signal.domain === "in_domain") {
+			const call = {
+				toolId: "escalation.request",
+				version: "1",
+				arguments: { caseId: "pending-case" },
+				idempotencyKey: `escalation:${input.request.traceId}`,
+			};
+			return {
+				...input,
+				state: {
+					...input.state,
+					requestedTool: "escalation.request",
+					riskLevel: "high" as const,
+				},
+				signal,
+				modelDecision: { kind: "tool" as const, call },
+				route: { route: "database" as const, call },
+			};
+		}
+
 		const jevRoute = gatedRoute({
 			...signal,
-			domainConfidenceThreshold:
-				this.options.domainConfidenceThreshold ??
-				defaultDomainConfidenceThreshold,
-			routeConfidenceThreshold:
-				this.options.routeConfidenceThreshold ??
-				defaultRouteConfidenceThreshold,
+			domainConfidenceThreshold,
+			routeConfidenceThreshold,
 		});
 		if (jevRoute) {
 			const modelDecision =

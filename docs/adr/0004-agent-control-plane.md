@@ -33,7 +33,20 @@ sesión -> normalización/privacidad -> Model Armor -> JEV primario
 - Firebase Auth aporta identidad; el backend resuelve tenant, rol y
   capacidades. El prompt nunca aporta esa autoridad.
 - El JEV primario solo elige `llm`, `database`, `relations` u `ood`; no
-  autoriza ni ejecuta. Ambigüedad o baja confianza pasan a policy y aclaración.
+  autoriza ni ejecuta. Ambigüedad o baja confianza pasan a aclaración.
+  Fraude activo, cargo no reconocido **formal**, pedido de humano/ombuds y
+  demás casos `escalate_hitl` del mapa de producto **no son** `ood`: permanecen
+  in-domain y se escalan.
+- Outcomes de turno del control plane (cajones excluyentes tras el gate):
+  `answerable` (lectura/explicación con evidencia ALLOW), `escalate_hitl`
+  (capability `escalation.request` → Policy `REQUIRE_APPROVAL`), `ood_refuse`
+  (fuera de dominio o abuso con respuesta segura), o aclaración durable.
+  Consulta de movimientos/descriptor = `answerable`; “quiero reclamar” /
+  “no autorizo” / reclamo formal = `escalate_hitl`.
+- Si `DecisionSignal.requiresEscalation === true` con dominio `in_domain`, el
+  control plane **sintetiza** la herramienta cerrada `escalation.request` y
+  salta el model router; la autorización sigue en Policy. El flag no autoriza
+  por sí mismo: Policy decide `REQUIRE_APPROVAL` o DENY según la matrix.
 - Antes de todo JEV, el backend construye una proyección de decisión tipada y
   mínima: identidad, tenant, rol, capacidades, clasificación de riesgo y las
   claves de catálogo provienen de código o sesión autenticada. El texto de

@@ -82,7 +82,7 @@ export const envSchema = z.object({
 	/** Product chat is opt-in and cannot silently fall back to demo mode. */
 	AGENTIC_CHAT_ENABLED: envBoolean.default(false),
 	/** Process-selected runner; the browser never chooses the pipeline. */
-	CHAT_PIPELINE: z.enum(["demo", "baseline"]).default("demo"),
+	CHAT_PIPELINE: z.enum(["demo", "baseline", "control_plane"]).default("demo"),
 	/** Explicit opt-in for the deliberately ungated comparative baseline. */
 	BASELINE_CHAT_ENABLED: envBoolean.default(false),
 	BASELINE_QUERY_CATALOG_PATH: z
@@ -401,6 +401,24 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		if (missing.length > 0) {
 			throw new Error(
 				`SVC-CORE-9011: CHAT_PIPELINE=baseline requires ${missing.join(", ")}`,
+			);
+		}
+	}
+
+	if (settings.CHAT_PIPELINE === "control_plane") {
+		const missing = [
+			["AGENTIC_CHAT_ENABLED", settings.AGENTIC_CHAT_ENABLED],
+			["CHAT_ENABLED", settings.CHAT_ENABLED],
+			["REALTIME_ENABLED", settings.REALTIME_ENABLED],
+		]
+			.filter(([, enabled]) => !enabled)
+			.map(([name]) => name);
+		if (settings.BASELINE_CHAT_ENABLED) {
+			missing.push("BASELINE_CHAT_ENABLED=false");
+		}
+		if (missing.length > 0) {
+			throw new Error(
+				`SVC-CORE-9022: CHAT_PIPELINE=control_plane requires ${missing.join(", ")}`,
 			);
 		}
 	}

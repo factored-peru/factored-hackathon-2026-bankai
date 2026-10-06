@@ -79,4 +79,6 @@ export type ConversationRunner = (input: {
 	reasonCode?: string;
 	approvalId?: string;
 	workflowId?: string;
+	decisionId?: string;
+	clarificationId?: string;
 }>;

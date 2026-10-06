@@ -50,6 +50,16 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
   activo Langfuse (`OTEL_ENABLED`) o BigQuery (`BIGQUERY_EVAL_DATASET`); si no,
   no crea nada. `server.ts` se lo entrega al `BaselineConversationRunner` y
   llama a su `shutdown` en `onClose`.
+- `evaluation/create-control-plane-conversation-runtime.ts`: composition root
+  del chat `CHAT_PIPELINE=control_plane`. Ensambla `AgentControlService` con
+  policy de disputa, workflows en memoria y, si hay `ragRetrievalRuntime`,
+  `FactualRagRouteHandler` en `database`/`rag`. `requiresEscalation` enruta vía
+  síntesis de `escalation.request` en decision-stage; Policy autoriza
+  `REQUIRE_APPROVAL`.
+- `providers/heuristic-hitl-decision-signal-provider.ts`: señal primaria
+  determinista (H14 humano, H2/H8 reclamo/estafa, OOD confiado, answerable).
+- `providers/safe-informational-model-provider.ts`: respond/compose stub sin
+  Vertex para rutas `answerable` en control_plane.
 - `observability/otel-telemetry-runtime.ts`: única fábrica de la ruta de
   telemetría. Con `OTEL_ENABLED=false` devuelve `null` y no crea nada. Activa,
   compone un `TracerProvider` aislado (nunca global, sin autoinstrumentación ni
@@ -73,15 +83,20 @@ Adaptadores de infraestructura reemplazables por implementaciones reales.
   `StaticCustomerIdentityResolver` es un mapa fijo para demos y pruebas.
   `FirestoreCustomerIdentityResolver` + `user_profiles` /
   `UserProfileBackedActorDirectory` cubren el camino durable.
-- `providers/typesafe-entry-chooser.ts`: el JEV de TypeSafe por HTTP
-  (`POST /v1/systemone`, una pregunta `choice` sobre las entradas del catálogo
-  más `none_of_the_above`). Confianza por debajo de `JEV_MIN_CONFIDENCE` o ausente
+- `providers/typesafe-system-one.ts`: cliente HTTP compartido
+  (`POST /v1/systemone`) para choice / noul / score.
+-   `providers/typesafe-entry-chooser.ts`: el JEV de TypeSafe como juez
+  especializado de catálogo (una pregunta `choice` sobre las entradas más
+  `none_of_the_above`). Confianza por debajo de `JEV_MIN_CONFIDENCE` o ausente
   es ambigua; una opción desconocida es `deny`. Los errores llevan un mensaje
   cerrado y nunca la clave ni el cuerpo de la respuesta.
-  `providers/vertex-parameter-interpreter.ts` usa el SDK oficial de Vertex AI
-  con ADC para interpretar parámetros, y trata el mensaje como dato.
-  `providers/structured-selector-runtime.ts` los compone; un proveedor
-  desactivado falla cerrado, nunca cae en otro modelo.
+  `providers/typesafe-kg-operation-chooser.ts` es el espejo para operaciones
+  del catálogo KG (misma forma `choice`, instrucciones en inglés, sin
+  artefactos crudos). `providers/vertex-parameter-interpreter.ts` usa el SDK
+  oficial de Vertex AI con ADC para interpretar parámetros, y trata el mensaje
+  como dato. `providers/structured-selector-runtime.ts` y
+  `providers/knowledge-graph-selector-runtime.ts` componen chooser + intérprete;
+  un proveedor desactivado falla cerrado, nunca cae en otro modelo.
 - `tools/` y `providers/`: registros allowlisted y proveedores fail-closed.
 
 `providers/vertex-baseline-chat-provider.ts` es una excepción deliberada para
