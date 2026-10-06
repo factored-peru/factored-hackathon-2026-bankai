@@ -75,7 +75,7 @@ antes de tratar P0-23 como “sin progreso”.
 | Datos y preparación | **COMPLETED** P0-06–10 y P0-44. |
 | KDD y grafo | **COMPLETED** P0-11–15, P0-28, P0-45–46 (`kdd-20261005-cur` / `graph-20261005-cur`). |
 | Backend productivo | **COMPLETED** P0-21/30/35/47 (demo/baseline + stores). P0-22 RBAC seed listo; Firebase Auth bloqueado Harumi. P0-24/25/26/29 `IN PROGRESS` (Model Armor/agentic). |
-| Evaluación | **COMPLETED** P0-48: 48 core + 5 extensiones KG C1–C5 en CI. **COMPLETED** P0-50 A/B local `eval:compare` (file sink). Baseline humana / E2E → P0-39; BQ persist A/B diferido. |
+| Evaluación | **COMPLETED** P0-48: 48 core + 5 extensiones KG C1–C5 en CI. **COMPLETED** P0-50 A/B local `eval:compare` (file sink; baseline Vertex opcional vía `--baseline auto\|vertex`). Baseline humana / E2E → P0-39; BQ persist A/B diferido. Doc: `app/backend/docs/eval-ab-local.md`. |
 
 ### Alexandra
 

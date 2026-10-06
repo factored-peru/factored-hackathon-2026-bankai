@@ -25,7 +25,7 @@ queda **incorrecto para el repositorio**:
 | --- | --- |
 | Código | `create-control-plane-conversation-runtime`, `ControlPlaneConversationRunner`, puente `requiresEscalation` → `escalation.request`, `HeuristicHitlDecisionSignalProvider`, tests `hitl-routing` / `casuistics-control-plane` |
 | ADR | 0004 / 0007 con taxonomía `answerable` / `escalate_hitl` / `ood_refuse` |
-| Eval | P0-50 A/B local baseline vs control plane; P0-48 gate 48+5 |
+| Eval | P0-50 A/B local baseline vs control plane (`eval:compare`; Vertex opcional); P0-48 gate 48+5. Ver `app/backend/docs/eval-ab-local.md`. |
 | Staging | Sin cutover: baseline + demo auth; Model Armor templates no verificados |
 
 **Regla:** no marcar P0-23 `COMPLETED` hasta DoD en entorno objetivo (agentic /

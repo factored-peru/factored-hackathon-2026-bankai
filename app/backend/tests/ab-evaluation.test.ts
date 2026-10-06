@@ -192,10 +192,50 @@ describe("local A/B evaluation", () => {
 		const controlled = await new ControlledComparableRunner().run(scenario);
 		expect(baseline.snapshotId).toBe(controlled.snapshotId);
 		expect(baseline.gatesInvoked.controlPlane).toBe(false);
+		expect(baseline.route).toBe("llm");
 		expect(controlled.gatesInvoked.controlPlane).toBe(true);
 		expect(controlled.gatesInvoked.policy).toBe(true);
 		expect(controlled.status).toBe("completed");
 		expect(controlled.queryPlanId).toBe("customer_products");
+	});
+
+	test("injected baseline model receives system prompt and drives tool use", async () => {
+		const scenario = selectAbScenarios("phase-1")[0];
+		expect(scenario).toBeDefined();
+		if (!scenario) throw new Error("missing phase-1 scenario");
+		const seen: string[] = [];
+		const record = await new BaselineComparableRunner({
+			model: {
+				async begin(input) {
+					seen.push(input.system.slice(0, 80));
+					expect(input.system).toContain("banking assistant");
+					expect(input.user).toBe(scenario.prompt);
+					return {
+						kind: "tool_call",
+						call: {
+							name: "retrieve_context",
+							args: {
+								queryId: "customer_products",
+								version: "v1",
+								parameters: {},
+							},
+							callId: "live-1",
+						},
+					};
+				},
+				async continue() {
+					return { kind: "final", text: "Productos sintéticos OK." };
+				},
+			},
+			modelId: "test-live-model",
+		}).run(scenario);
+		expect(seen.length).toBe(1);
+		expect(record.modelVersion).toBe("test-live-model");
+		expect(record.route).toBe("llm");
+		expect(record.retrievalAttemptCount).toBe(1);
+		expect(record.retrievalSuccessCount).toBe(1);
+		expect(record.queryPlanId).toBe("customer_products");
+		expect(record.toolOutcome).toBe("ready");
 	});
 
 	test("deny and guardrail references align toolOutcome for match judging", async () => {

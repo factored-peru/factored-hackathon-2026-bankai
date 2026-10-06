@@ -121,6 +121,13 @@ comparación posterior puede medir completitud, tiempo, fallos y leaks sobre
 fixtures sintéticos mediante evaluadores/judges aprobados, sin convertir al
 baseline en una vía de release ni de acceso a datos.
 
+El A/B local (`app/backend` `eval:compare`, P0-50) puede invocar Vertex en el
+baseline cuando `VERTEX_AI_ENABLED` está activo (`--baseline auto|vertex`):
+aplica `BASELINE_SYSTEM_PROMPT` y un tool de QueryPlans allowlisted con filas
+sintéticas. El modo `--baseline synthetic` conserva el double scripted para
+tests. El juez JEV puntúa trayectorias saneadas, no el texto de respuesta.
+Detalle operativo y corrida de referencia: `app/backend/docs/eval-ab-local.md`.
+
 | Referencia | Patrón adoptado | Exclusión P0 |
 | --- | --- | --- |
 | OpenTelemetry | spans y atributos de métricas de baja cardinalidad | contenido o exportador de contenido |

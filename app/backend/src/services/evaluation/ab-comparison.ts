@@ -107,6 +107,11 @@ export type AbCompareOptions = Readonly<{
 	judge?: TaskCompletionJudge;
 	/** Controlled pipeline composition root (integrations). */
 	controlled: ComparablePipelineRunner;
+	/**
+	 * Baseline pipeline. Defaults to a scripted double; pass a runner wired to
+	 * Vertex (or another BaselineChatModel) for live LLM A/B.
+	 */
+	baseline?: ComparablePipelineRunner;
 }>;
 
 export type AbCompareResult = Readonly<{
@@ -118,7 +123,7 @@ export type AbCompareResult = Readonly<{
 export async function runAbComparison(
 	options: AbCompareOptions,
 ): Promise<AbCompareResult> {
-	const baseline = new BaselineComparableRunner();
+	const baseline = options.baseline ?? new BaselineComparableRunner();
 	const controlled = options.controlled;
 	const judge = options.judge ?? new SyntheticTaskCompletionJudge();
 	const sink = new FileEvaluationReportSink(options.outRoot);
