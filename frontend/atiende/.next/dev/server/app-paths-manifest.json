@@ -1,0 +1,4 @@
+{
+  "/backoffice/page": "app/backoffice/page.js",
+  "/chat/page": "app/chat/page.js"
+}

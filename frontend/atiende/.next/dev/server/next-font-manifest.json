@@ -1,0 +1,13 @@
+{
+  "app": {
+    "[project]/app/backoffice/page": [
+      "static/media/f06bf9da926bae75-s.p.2874ccu1_u7jf.woff2"
+    ],
+    "[project]/app/chat/page": [
+      "static/media/f06bf9da926bae75-s.p.2874ccu1_u7jf.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pages": {},
+  "pagesUsingSizeAdjust": false
+}
