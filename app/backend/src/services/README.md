@@ -16,6 +16,21 @@ sobre el último mensaje minimizado → Jev domain gate →
 out_of_domain/clarify o decisión → policy → ruta → recuperación/tool →
 generación → reemplazo validado → respuesta.
 
+`conversations/control-plane-conversation-runner.ts` adapta `AgentControlService`
+al puerto `ConversationRunner`: `pending_clarification` se publica como
+`awaiting_clarification`, `pending_approval` se conserva para HITL, y
+`completed`/`denied`/`failed` pasan sin remapeo. El escalamiento productivo
+sale de capability + `PolicyEngine` (`REQUIRE_APPROVAL`). Si
+`DecisionSignal.requiresEscalation` es verdadero con dominio `in_domain`,
+`AgentDecisionStage` sintetiza la tool `escalation.request` (ADR 0004/0007)
+sin llamar al model router; el flag no autoriza por sí solo.
+
+`control-plane/routes/factual-rag-route-handler.ts` ejecuta el StateGraph ADR 0004
+en rutas `database`/`rag` y traduce terminales: evidencia → ready,
+`*_ambiguous`/`retrieval_policy_clarify` → aclaración durable,
+deny → `denied`. `control-plane/capability-retrieval-policy.ts` es el gate de
+retrieval (allow/deny/clarify por capabilities de lectura); no escala.
+
 `control-plane/rag-state-graph.ts` es la rama de recuperación como `StateGraph`
 y mantiene la memoria conversacional por hilo. Con un `checkpointer` inyectado,
 cada turno agrega su mensaje a `history` (máximo `MAX_CONVERSATION_TURNS`) y el
@@ -49,7 +64,9 @@ códigos cerrados de fallo y nunca lanza: persistir mal no altera una evaluació
 `KnowledgeGraphRuntime` (local o GCS) con `createRagStateGraph`. El servidor lo
 decora como `ragRetrievalRuntime` cuando hay bucket/local KG. El JEV de KG
 default niega hasta inyectar un selector productivo; Structured RAG permanece
-opt-in.
+opt-in. El default de `retrievalPolicy` es `capabilityRetrievalPolicy`
+(allow/deny/clarify por capabilities de lectura); `allowRetrievalPolicy` sigue
+disponible para tests.
 
 `ports/customer-identity.ts` define `CustomerIdentityResolver`: devuelve el
 `customer_id` de la sesión verificada o `null`. Las consultas de datos usan ese
@@ -68,28 +85,43 @@ columnas declaradas y comprueba el tipo de cada celda; `data/query-dry-run-check
 compara un dry run con lo que declara la entrada (mismas columnas y tipos, y
 bytes estimados dentro del tope). Ambos fallan cerrados.
 
-`retrieval/structured-rag.ts` ejecuta Structured RAG. Un `StructuredQuerySelector`
-(el juez especializado) responde `select`, `ambiguous` o `deny`; nunca SQL. Solo
-ve `id`, `version`, `description` y los parámetros que el llamador puede rellenar,
-y su elección debe ser una entrada del catálogo que se le mostró. Después
-`data/query-parameter-binder.ts` valida esos valores contra el catálogo e inyecta
-`customer_id` desde `CustomerIdentityResolver`: un llamador no puede aportar ni
-nombrar un parámetro de sesión. El resultado se convierte en `EvidenceDTO`
-(`retrieval/structured-evidence.ts`) y a `ModelEvidence` al cruzar al modelo, sin
-SQL, tablas, job ni identidad. Cada fallo es un código cerrado (`structured_*`);
-`structured_selection_ambiguous` y `structured_parameters_missing` quedan en
-`terminalReason` para que policy decida si aclarar. El selector recibe solo la
-consulta actual: un seguimiento ("¿y el mes pasado?") necesita pasar `history` a
-la recuperación, y todavía no se hace.
+`retrieval/structured-rag.ts` ejecuta Structured RAG. El StateGraph
+(`control-plane/rag-state-graph.ts`) corre ADR 0004 en ambas ramas factuales:
+
+```text
+database  -> structured_catalog -> structured_jev -> retrieval_policy -> structured_rag
+relations -> kg_catalog         -> kg_jev         -> retrieval_policy -> kg_rag
+```
+
+`structured_jev` / `kg_jev` son selectores especializados (`select` |
+`ambiguous` | `deny`); nunca SQL ni operaciones de grafo libres. Solo ven
+`id`, `version`, `description` y parámetros rellenables, y su elección debe
+ser una entrada del catálogo mostrado. `retrieval_policy` corre antes de
+ejecutar; deny/clarify termina sin RAG. `executeSelection` en Structured y KG
+consume la selección ya hecha (sin re-elegir adentro). El path `execute()` de
+StructuredRag sigue disponible para scripts/tests y aún invoca el selector.
+
+Después `data/query-parameter-binder.ts` valida valores Structured contra el
+catálogo e inyecta `customer_id` desde `CustomerIdentityResolver`: un llamador
+no puede aportar ni nombrar un parámetro de sesión. El resultado se convierte
+en `EvidenceDTO` (`retrieval/structured-evidence.ts`) y a `ModelEvidence` al
+cruzar al modelo, sin SQL, tablas, job ni identidad. Cada fallo es un código
+cerrado (`structured_*`); `structured_selection_ambiguous` y
+`structured_parameters_missing` quedan en `terminalReason` para que policy
+decida si aclarar. El selector recibe solo la consulta actual: un seguimiento
+("¿y el mes pasado?") necesita pasar `history` a la recuperación, y todavía
+no se hace.
 
 `retrieval/structured-selection.ts` separa los dos papeles del selector:
 `StructuredEntryChooser` (el JEV elige una entrada del catálogo que se le
 mostró, o dice que ninguna sirve o que no está seguro) y
 `StructuredParameterInterpreter` (un LLM lee los parámetros de la entrada
-elegida). `ComposedStructuredQuerySelector` los une con el contrato que ya
-consume `StructuredRag`; la respuesta del juez solo se acepta si nombra una
-entrada del catálogo mostrado, y la del intérprete se descarta salvo los
-parámetros declarados con valor. Ninguno ve SQL, tablas ni datos.
+elegida). `ComposedStructuredQuerySelector` los une con el contrato del nodo
+`structured_jev`. `retrieval/knowledge-graph-composed-selection.ts` es el
+espejo para KG (`ComposedKnowledgeGraphSelector` → `kg_jev`). La respuesta del
+juez solo se acepta si nombra una entrada del catálogo mostrado, y la del
+intérprete se descarta salvo los parámetros declarados con valor. Ninguno ve
+SQL, tablas, artefactos crudos ni datos.
 
 Los handlers de ruta viven en `control-plane/routes/` y son intercambiables.
 Los datos autorizados se desidentifican antes de generar, y el reemplazo de

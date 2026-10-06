@@ -1,28 +1,33 @@
 /**
  * Composition root for the retrieval StateGraph with a published KG runtime.
  *
- * Wires catalog + KnowledgeGraphRag into createRagStateGraph. Structured RAG and
- * JEV selectors are injected by the caller so BigQuery/JEV stay opt-in.
+ * ADR 0004: catalog -> specialized JEV -> policy -> RAG for Structured and KG.
+ * Selectors stay opt-in behind JEV/Vertex flags; defaults deny fail-closed.
+ * Default retrieval policy is capability-gated (allow/deny/clarify); escalate
+ * remains on conversational policy only.
  */
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
-import {
-	type CatalogJevRouter,
-	createRagStateGraph,
-	type PrimaryJevRouter,
-	type RagStateGraphDependencies,
-} from "../control-plane/rag-state-graph.js";
-import type { BaseRag } from "../retrieval/base-rag.js";
 import type { ImmutableKnowledgeGraphArtifactRepository } from "../retrieval/knowledge-graph-artifacts.js";
 import type { KnowledgeGraphRag } from "../retrieval/knowledge-graph-rag.js";
 import type { KnowledgeGraphOperationSelector } from "../retrieval/knowledge-graph-selection.js";
 import type { BaseRagCatalogRepository } from "../retrieval/rag-catalog.js";
+import type {
+	StructuredQuerySelector,
+	StructuredRagExecutor,
+} from "../retrieval/structured-rag.js";
+import { capabilityRetrievalPolicy } from "./capability-retrieval-policy.js";
+import {
+	createRagStateGraph,
+	type PrimaryJevRouter,
+	type RagStateGraphDependencies,
+	type RetrievalPolicyGate,
+} from "./rag-state-graph.js";
 
 export type RagRetrievalRuntime = Readonly<{
 	graph: ReturnType<typeof createRagStateGraph>;
 	dependencies: RagStateGraphDependencies;
 }>;
 
-/** Structural KG binding for the retrieval graph; adapters live in integrations. */
 export type KnowledgeGraphRuntimeBinding = Readonly<{
 	catalog: ImmutableKnowledgeGraphArtifactRepository;
 	rag: KnowledgeGraphRag;
@@ -33,13 +38,13 @@ export const denyKnowledgeGraphSelector: KnowledgeGraphOperationSelector = {
 	select: async () => ({ decision: "deny" as const }),
 };
 
-/** Routes every query to the KG branch when Structured RAG is unavailable. */
-export const relationsPrimaryJev: PrimaryJevRouter = {
-	assess: async () => "relations",
+/** Fail-closed Structured JEV when BigQuery/JEV stack is not injected. */
+export const denyStructuredSelector: StructuredQuerySelector = {
+	select: async () => ({ decision: "deny" as const }),
 };
 
-export const allowCatalogJev: CatalogJevRouter = {
-	assess: async () => true,
+export const relationsPrimaryJev: PrimaryJevRouter = {
+	assess: async () => "relations",
 };
 
 const unavailableStructuredCatalog: BaseRagCatalogRepository = {
@@ -50,9 +55,8 @@ const unavailableStructuredCatalog: BaseRagCatalogRepository = {
 	}),
 };
 
-const unavailableStructuredRag: BaseRag = {
-	kind: "structured",
-	execute: async () => ({
+const unavailableStructuredRag: StructuredRagExecutor = {
+	executeSelection: async () => ({
 		status: "failed",
 		reasonCode: "structured_runtime_disabled",
 	}),
@@ -65,18 +69,20 @@ const unavailableStructuredRag: BaseRag = {
 export function createRagRetrievalRuntime(input: {
 	knowledgeGraph: KnowledgeGraphRuntimeBinding;
 	structuredCatalog?: BaseRagCatalogRepository;
-	structuredRag?: BaseRag;
+	structuredRag?: StructuredRagExecutor;
 	primaryJev?: PrimaryJevRouter;
-	structuredJev?: CatalogJevRouter;
+	structuredJev?: StructuredQuerySelector;
 	knowledgeGraphJev?: KnowledgeGraphOperationSelector;
+	retrievalPolicy?: RetrievalPolicyGate;
 	checkpointer?: BaseCheckpointSaver;
 }): RagRetrievalRuntime {
 	const base = {
 		primaryJev: input.primaryJev ?? relationsPrimaryJev,
 		structuredCatalog: input.structuredCatalog ?? unavailableStructuredCatalog,
 		knowledgeGraphCatalog: input.knowledgeGraph.catalog,
-		structuredJev: input.structuredJev ?? allowCatalogJev,
+		structuredJev: input.structuredJev ?? denyStructuredSelector,
 		knowledgeGraphJev: input.knowledgeGraphJev ?? denyKnowledgeGraphSelector,
+		retrievalPolicy: input.retrievalPolicy ?? capabilityRetrievalPolicy,
 		structuredRag: input.structuredRag ?? unavailableStructuredRag,
 		knowledgeGraphRag: input.knowledgeGraph.rag,
 	};

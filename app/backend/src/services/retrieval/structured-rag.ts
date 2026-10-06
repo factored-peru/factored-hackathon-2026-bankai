@@ -22,6 +22,11 @@ export const structuredSelectionSchema = z.discriminatedUnion("decision", [
 ]);
 export type StructuredSelection = z.infer<typeof structuredSelectionSchema>;
 
+export type StructuredSelectDecision = Extract<
+	StructuredSelection,
+	{ decision: "select" }
+>;
+
 export interface StructuredQuerySelector {
 	select(input: {
 		query: string;
@@ -38,7 +43,17 @@ export interface StructuredQueryEntries {
 	}): Promise<QueryCatalogEntry | null>;
 }
 
+export interface StructuredRagExecutor {
+	executeSelection(input: {
+		session: SessionContext;
+		catalog: RagCatalog;
+		selection: StructuredSelectDecision;
+		traceId: string;
+	}): Promise<RagExecutionResult>;
+}
+
 export type StructuredRagDependencies = Readonly<{
+	/** Used by execute() convenience path; graph uses executeSelection after JEV. */
 	selector: StructuredQuerySelector;
 	entries: StructuredQueryEntries;
 	identity: CustomerIdentityResolver;
@@ -51,7 +66,7 @@ function failed(reasonCode: string): RagExecutionResult {
 }
 
 /** Closed, catalog-based BigQuery retrieval. SQL and identity bindings are never model input. */
-export class StructuredRag extends BaseRag {
+export class StructuredRag extends BaseRag implements StructuredRagExecutor {
 	readonly kind = "structured" as const;
 	private readonly now: () => Date;
 
@@ -60,6 +75,10 @@ export class StructuredRag extends BaseRag {
 		this.now = dependencies.now ?? (() => new Date());
 	}
 
+	/**
+	 * Convenience path (scripts/tests): specialized JEV runs here.
+	 * The ADR StateGraph must call executeSelection after structured_jev instead.
+	 */
 	async execute(input: {
 		query: string;
 		session: SessionContext;
@@ -84,7 +103,24 @@ export class StructuredRag extends BaseRag {
 			return failed("structured_selection_ambiguous");
 		if (selection.data.decision === "deny")
 			return failed("structured_query_not_selected");
-		const { queryId, version, parameters } = selection.data;
+		return this.executeSelection({
+			session: input.session,
+			catalog: input.catalog,
+			selection: selection.data,
+			traceId: input.traceId,
+		});
+	}
+
+	/** ADR 0004: execute only after specialized JEV + policy. No re-selection. */
+	async executeSelection(input: {
+		session: SessionContext;
+		catalog: RagCatalog;
+		selection: StructuredSelectDecision;
+		traceId: string;
+	}): Promise<RagExecutionResult> {
+		if (input.catalog.kind !== this.kind)
+			return failed("structured_catalog_mismatch");
+		const { queryId, version, parameters } = input.selection;
 		const listed = input.catalog.entries.some(
 			(entry) => entry.id === queryId && entry.version === version,
 		);

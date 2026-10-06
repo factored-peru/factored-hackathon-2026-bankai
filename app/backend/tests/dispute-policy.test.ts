@@ -41,6 +41,20 @@ const state = (requestedTool: string): DecisionState => ({
 });
 
 describe("DisputePolicyEngine", () => {
+	test("allows informational respond when no dispute operation is nominated", async () => {
+		const result = await new DisputePolicyEngine().evaluate({
+			session,
+			state: {
+				...state("escalation.request"),
+				requestedTool: null,
+			},
+			modelDecision: { kind: "respond", response: "safe" },
+			signal: null,
+		});
+		expect(result.outcome).toBe("ALLOW");
+		expect(result.reasons).toContain("informational_no_dispute_operation");
+	});
+
 	test("requires approval for an allowed mock escalation", async () => {
 		const result = await new DisputePolicyEngine().evaluate({
 			session,

@@ -19,7 +19,7 @@ const session: SessionContext = {
 	tenantId: "demo-bankai",
 	scopes: [],
 	roles: ["customer"],
-	capabilities: [],
+	capabilities: ["dispute.read"],
 	sessionVersion: 1,
 	createdAt: "2026-01-01T00:00:00.000Z",
 	lastSeenAt: "2026-01-01T00:00:00.000Z",
@@ -204,6 +204,7 @@ describe("createRagRetrievalRuntime", () => {
 				ragThreadConfig(session, "thread-kg"),
 			);
 			expect(result.executionOrder).toContain("kg_catalog");
+			expect(result.executionOrder).toContain("retrieval_policy");
 			expect(result.executionOrder).toContain("kg_rag");
 			expect(result.terminalReason).toBeNull();
 		} finally {

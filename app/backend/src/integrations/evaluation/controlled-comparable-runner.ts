@@ -11,46 +11,46 @@ import type {
 	SessionStore,
 } from "../../domain/session.js";
 import type { ToolDefinition } from "../../domain/tools/contracts.js";
-import {
-	InMemoryApprovalStore,
-	InMemoryAuditSink,
-	InMemoryClarificationStore,
-	InMemoryIdempotencyStore,
-	InMemoryWorkflowStore,
-} from "../../integrations/memory/in-memory-control-stores.js";
-import { RegexContentPrivacyProvider } from "../../integrations/providers/regex-content-privacy-provider.js";
-import { StaticToolRegistry } from "../../integrations/tools/static-tool-registry.js";
-import { AgentControlService } from "../control-plane/agent-control-service.js";
-import { AgentDecisionStage } from "../control-plane/decision-stage.js";
-import { AgentInputStage } from "../control-plane/input-stage.js";
-import { AgentPolicyStage } from "../control-plane/policy-stage.js";
-import { AgentResponseStage } from "../control-plane/response-stage.js";
-import { AgentRouteStage } from "../control-plane/route-stage.js";
-import { DatabaseRouteHandler } from "../control-plane/routes/database-route-handler.js";
-import { LlmRouteHandler } from "../control-plane/routes/llm-route-handler.js";
-import { RagRouteHandler } from "../control-plane/routes/rag-route-handler.js";
-import { RejectRouteHandler } from "../control-plane/routes/reject-route-handler.js";
-import { DisclosureService } from "../disclosure/disclosure-service.js";
-import { FinalResponseGuardrail } from "../disclosure/final-response-guardrail.js";
-import type {
-	DecisionSignalProvider,
-	GuardrailProvider,
-	ModelProvider,
-	PolicyEngine,
-} from "../ports/control.js";
-import type { IdempotencyStore } from "../ports/tools.js";
-import { GenerationPrivacyService } from "../privacy/generation-privacy-service.js";
-import { PromptPrivacyService } from "../privacy/prompt-privacy-service.js";
-import { RetrievalService } from "../retrieval/retrieval-service.js";
-import { ToolExecutionService } from "../tools/tool-execution-service.js";
-import { WorkflowService } from "../workflows/workflow-service.js";
+import { AgentControlService } from "../../services/control-plane/agent-control-service.js";
+import { AgentDecisionStage } from "../../services/control-plane/decision-stage.js";
+import { AgentInputStage } from "../../services/control-plane/input-stage.js";
+import { AgentPolicyStage } from "../../services/control-plane/policy-stage.js";
+import { AgentResponseStage } from "../../services/control-plane/response-stage.js";
+import { AgentRouteStage } from "../../services/control-plane/route-stage.js";
+import { DatabaseRouteHandler } from "../../services/control-plane/routes/database-route-handler.js";
+import { LlmRouteHandler } from "../../services/control-plane/routes/llm-route-handler.js";
+import { RagRouteHandler } from "../../services/control-plane/routes/rag-route-handler.js";
+import { RejectRouteHandler } from "../../services/control-plane/routes/reject-route-handler.js";
+import { DisclosureService } from "../../services/disclosure/disclosure-service.js";
+import { FinalResponseGuardrail } from "../../services/disclosure/final-response-guardrail.js";
 import {
 	type ComparablePipelineRunner,
 	type ControlledMode,
 	type EvaluationScenario,
 	type PipelineRunRecord,
 	parsePipelineRunRecord,
-} from "./ab-contracts.js";
+} from "../../services/evaluation/ab-contracts.js";
+import type {
+	DecisionSignalProvider,
+	GuardrailProvider,
+	ModelProvider,
+	PolicyEngine,
+} from "../../services/ports/control.js";
+import type { IdempotencyStore } from "../../services/ports/tools.js";
+import { GenerationPrivacyService } from "../../services/privacy/generation-privacy-service.js";
+import { PromptPrivacyService } from "../../services/privacy/prompt-privacy-service.js";
+import { RetrievalService } from "../../services/retrieval/retrieval-service.js";
+import { ToolExecutionService } from "../../services/tools/tool-execution-service.js";
+import { WorkflowService } from "../../services/workflows/workflow-service.js";
+import {
+	InMemoryApprovalStore,
+	InMemoryAuditSink,
+	InMemoryClarificationStore,
+	InMemoryIdempotencyStore,
+	InMemoryWorkflowStore,
+} from "../memory/in-memory-control-stores.js";
+import { RegexContentPrivacyProvider } from "../providers/regex-content-privacy-provider.js";
+import { StaticToolRegistry } from "../tools/static-tool-registry.js";
 
 function sessionFor(actorId: string): SessionContext {
 	return {
@@ -415,6 +415,7 @@ function createControlledHarness(
 					},
 					async complete() {},
 					async release() {},
+					async markIndeterminate() {},
 				}
 			: new InMemoryIdempotencyStore();
 

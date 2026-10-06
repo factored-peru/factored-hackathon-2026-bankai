@@ -28,6 +28,10 @@ export const evaluationScenarioSchema = z
 		prompt: z.string().min(1),
 		actorId: z.string().min(1),
 		snapshotId: z.string().min(1),
+		/** positive = legitimate catalog/safe handling; negative = abuse/deny/fail-closed. */
+		polarity: z.enum(["positive", "negative"]),
+		/** User-utterance locale (system/judge prompts stay English). */
+		locale: z.enum(["es", "pt"]),
 		expectedRoute: z.enum([
 			"llm",
 			"structured_rag",

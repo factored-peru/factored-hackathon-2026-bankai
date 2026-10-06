@@ -117,6 +117,12 @@ y `BASELINE_MAX_RETRIEVAL_ATTEMPTS` está limitado a uno o dos intentos.
 El backend rechaza el arranque si falta alguno o si se intenta mezclarlo con
 `AGENTIC_CHAT_ENABLED=true` (`SVC-CORE-9011`). El cliente no puede elegirlo.
 
+`CHAT_PIPELINE=control_plane` selecciona el runner gobernado
+(`AgentControlService` vía `create-control-plane-conversation-runtime`). Exige
+`AGENTIC_CHAT_ENABLED=true`, `CHAT_ENABLED=true`, `REALTIME_ENABLED=true` y
+`BASELINE_CHAT_ENABLED=false` (`SVC-CORE-9022`). Publica
+`awaiting_clarification` / `pending_approval` / `completed` según casuística.
+
 El baseline recibe texto, el DDL estático de las tablas relevantes del
 diccionario y una herramienta nativa `retrieve_context`. La herramienta carga
 los tres `QueryPlan` de ejemplo, liga el `customer_id` al actor demo desde la

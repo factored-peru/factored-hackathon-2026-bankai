@@ -69,7 +69,11 @@ export interface RouteEvaluator extends Evaluator {
 	readonly route: EvaluationRoute;
 }
 
-/** Optional boundary for JEV or LLM judges; no provider is wired in P0. */
+/**
+ * Optional boundary for JEV or LLM judges (ADR 0015).
+ * A/B local wires TrajectoryJevJudgeEvaluator via integrations
+ * createTrajectoryJevAsJudge; the sync P0-48 runner remains deterministic-only.
+ */
 export interface JudgeEvaluator {
 	evaluate(context: EvaluationContext): Promise<readonly EvaluationResult[]>;
 }
