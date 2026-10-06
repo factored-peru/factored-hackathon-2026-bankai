@@ -13,8 +13,8 @@
 # (gcloud auth application-default login); never copy it into Git.
 #
 # SESSION_STORE_ENABLED and PRIVATE_DATA_ENCRYPTION_KEY feed the Valkey that
-# backend-compose.yml already starts; the encryption key is any random 32+
-# character local value.
+# backend-compose.yml already starts (sessions, private handles and pending
+# clarifications). The key is 32 random bytes in base64url, any local value.
 services:
   base-bun-typescript-service:
     environment:

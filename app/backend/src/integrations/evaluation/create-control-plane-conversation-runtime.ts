@@ -21,6 +21,7 @@ import { LlmRouteHandler } from "../../services/control-plane/routes/llm-route-h
 import { RagRouteHandler } from "../../services/control-plane/routes/rag-route-handler.js";
 import { RejectRouteHandler } from "../../services/control-plane/routes/reject-route-handler.js";
 import { createControlPlaneConversationRunner } from "../../services/conversations/control-plane-conversation-runner.js";
+import type { PendingClarificationStore } from "../../services/conversations/pending-clarification.js";
 import { DisclosureService } from "../../services/disclosure/disclosure-service.js";
 import { FinalResponseGuardrail } from "../../services/disclosure/final-response-guardrail.js";
 import { DisputePolicyEngine } from "../../services/disputes/dispute-policy-engine.js";
@@ -90,6 +91,8 @@ export type ControlPlaneRunnerDeps = Readonly<{
 	 * the factual graph instead of asking the model (ADR 0004). Off by default.
 	 */
 	routeFromSignal?: boolean;
+	/** Where a thread keeps the query it waits to finish; per process when unset. */
+	pendingClarifications?: PendingClarificationStore;
 }>;
 
 export function createControlPlaneConversationRuntime(
@@ -183,6 +186,9 @@ export function createControlPlaneConversationRuntime(
 
 	return {
 		service,
-		runner: createControlPlaneConversationRunner(service),
+		runner: createControlPlaneConversationRunner(
+			service,
+			deps.pendingClarifications,
+		),
 	};
 }

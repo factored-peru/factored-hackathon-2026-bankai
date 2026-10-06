@@ -5,6 +5,12 @@
 import { defaultAgentBudget } from "../../domain/control/contracts.js";
 import type { AgentControlService } from "../control-plane/agent-control-service.js";
 import type { ConversationRunner } from "../ports/conversation.js";
+import {
+	composeClarifiedMessage,
+	InMemoryPendingClarificationStore,
+	maxClarificationAnswerLength,
+	type PendingClarificationStore,
+} from "./pending-clarification.js";
 
 /** Fixed text: it carries no user data and promises no outcome or timing. */
 export const pendingApprovalNotice =
@@ -12,11 +18,20 @@ export const pendingApprovalNotice =
 
 export function createControlPlaneConversationRunner(
 	service: AgentControlService,
+	pendingClarifications: PendingClarificationStore = new InMemoryPendingClarificationStore(),
 ): ConversationRunner {
 	return async (input) => {
+		// The next message of a thread that is waiting for an answer finishes the
+		// pending query. A long message is a new question, so it starts over.
+		const key = `${input.session.tenantId}:${input.session.userId}:${input.threadId}`;
+		const pending = await pendingClarifications.take(key);
+		const clarified =
+			pending !== null && input.message.length <= maxClarificationAnswerLength
+				? { pending, ...composeClarifiedMessage(pending, input.message) }
+				: null;
 		const result = await service.run({
 			sessionId: input.session.sessionId,
-			message: input.message,
+			message: clarified?.message ?? input.message,
 			traceId: input.traceId,
 			threadId: input.threadId,
 			allowedSources: [],
@@ -33,6 +48,11 @@ export function createControlPlaneConversationRunner(
 			};
 		}
 		if (result.status === "pending_clarification") {
+			await pendingClarifications.put(key, {
+				original: clarified?.pending.original ?? input.message,
+				exchanges: clarified?.exchanges ?? [],
+				question: result.question,
+			});
 			await input.onDelta(result.question);
 			return {
 				status: "awaiting_clarification",

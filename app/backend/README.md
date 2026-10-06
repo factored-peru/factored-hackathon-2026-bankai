@@ -116,7 +116,8 @@ y con `SERVICE_TOKEN` en tu entorno:
    `docker compose -f backend-compose.yml -f chat-compose.yml down -v`.
 3. **Agente gobernado (`control_plane`) con login demo**: añade
    `-f control-plane-compose.yml` y define en tu shell, además de las variables
-   del punto 2, `PRIVATE_DATA_ENCRYPTION_KEY` (32+ caracteres locales),
+   del punto 2, `PRIVATE_DATA_ENCRYPTION_KEY` (32 bytes aleatorios en base64url; cualquier valor
+   local, por ejemplo `[Convert]::ToBase64String((1..32 | % { Get-Random -Max 256 }))`),
    `GCS_UPLOAD_BUCKET`, `JEV_BASE_URL`, `JEV_API_KEY`, `JEV_MODEL`,
    `MODEL_ARMOR_PROJECT_ID`, `MODEL_ARMOR_LOCATION` y
    `MODEL_ARMOR_INSPECT_TEMPLATE`. Usa Firestore, BigQuery, Vertex AI, Model
@@ -124,6 +125,23 @@ y con `SERVICE_TOKEN` en tu entorno:
    sintético. Una consulta de movimientos recorre el grafo (Structured) y
    responde en texto legible; "quiero hablar con un humano" queda en
    `pending_approval` y un mensaje ambiguo en `awaiting_clarification`.
+   Cuando una consulta necesita datos que faltan (por ejemplo "mis últimos
+   movimientos"), el agente nombra lo que falta (producto y periodo) y lista tus
+   productos con su código; tu siguiente mensaje del mismo hilo es la respuesta y
+   retoma la consulta (por ejemplo `PRD-… del 2026-09-01 al 2026-09-30`). Un
+   saludo o una duda general la responde Vertex AI con el filtro de privacidad y
+   el guardrail finales; los datos recuperados nunca se envían al modelo. La
+   consulta pendiente vive en Memorystore for Valkey, cifrada y con la clave
+   hasheada (5 minutos, un solo uso), así que se comparte entre instancias. Si
+   Valkey falla, el mensaje se trata como una pregunta nueva.
+   La ruta de cada mensaje la decide el JEV primario de TypeSafe (una pregunta de
+   elección: datos del cliente, soporte general, pedir una persona, fuera de
+   dominio o poco claro), así que no hacen falta palabras clave. Con baja
+   confianza el agente aclara en vez de adivinar. Si el JEV no responde o
+   contesta algo inválido, ese turno lo decide la heurística por palabras clave.
+   La opción de relaciones agregadas (KG) no se ofrece mientras el KG no esté
+   configurado (`GCS_GRAPH_BUCKET`), para no enviar preguntas a una rama sin
+   respuesta.
 
 Con la telemetría activa, cada turno del baseline emite un span `evaluation`
 (`bankai.pipeline=baseline`, latencia, llamadas al modelo, intentos de

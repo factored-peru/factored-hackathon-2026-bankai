@@ -45,7 +45,7 @@ function hashIdentifier(value: string): string {
 	return createHash("sha256").update(value).digest("base64url");
 }
 
-function encrypt(value: unknown, key: Uint8Array): string {
+export function encrypt(value: unknown, key: Uint8Array): string {
 	if (key.byteLength !== 32) {
 		throw new Error("Private data encryption key must be 32 bytes");
 	}
@@ -64,7 +64,7 @@ function encrypt(value: unknown, key: Uint8Array): string {
 		.join(".");
 }
 
-function decrypt(encoded: string, key: Uint8Array): unknown {
+export function decrypt(encoded: string, key: Uint8Array): unknown {
 	const parts = encoded.split(".");
 	if (parts.length !== 3 || key.byteLength !== 32) {
 		throw new Error("Invalid encrypted private handle");

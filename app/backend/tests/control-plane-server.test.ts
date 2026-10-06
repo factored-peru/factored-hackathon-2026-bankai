@@ -13,6 +13,8 @@ import {
 import { InMemorySessionStore } from "../src/integrations/memory/in-memory-session-store.js";
 import { HeuristicHitlDecisionSignalProvider } from "../src/integrations/providers/heuristic-hitl-decision-signal-provider.js";
 import { SafeInformationalModelProvider } from "../src/integrations/providers/safe-informational-model-provider.js";
+import { TypeSafePrimaryDecisionSignalProvider } from "../src/integrations/providers/typesafe-primary-signal-provider.js";
+import { VertexSupportModelProvider } from "../src/integrations/providers/vertex-support-model-provider.js";
 import { capabilityRetrievalPolicy } from "../src/services/control-plane/capability-retrieval-policy.js";
 import type { RagRetrievalRuntime } from "../src/services/control-plane/rag-retrieval-runtime.js";
 import { createRagStateGraph } from "../src/services/control-plane/rag-state-graph.js";
@@ -21,6 +23,7 @@ import { ConversationService } from "../src/services/conversations/conversation-
 import type {
 	DecisionSignalProvider,
 	GuardrailProvider,
+	ModelProvider,
 } from "../src/services/ports/control.js";
 import type { BaseRagCatalogRepository } from "../src/services/retrieval/rag-catalog.js";
 
@@ -122,6 +125,129 @@ function ragRuntime(calls: { structured: number; knowledgeGraph: number }) {
 	} as unknown as RagRetrievalRuntime;
 }
 
+const transactionRows = [
+	{
+		content: JSON.stringify({
+			query: "recent_transactions:v1",
+			filters: {},
+			columns: ["concepto", "monto"],
+			rows: [{ concepto: "compra de prueba", monto: 25.5 }],
+		}),
+		documentRef: "recent_transactions:v1",
+		sourceType: "bigquery_structured",
+		classification: "internal" as const,
+		contentHash: "hash-tx",
+	},
+];
+
+const productRows = [
+	{
+		content: JSON.stringify({
+			query: "customer_products:v1",
+			filters: {},
+			columns: ["product_id", "product_type", "currency"],
+			rows: [
+				{
+					product_id: "PRD-AAA",
+					product_type: "Tarjeta Crédito",
+					currency: "COP",
+				},
+			],
+		}),
+		documentRef: "customer_products:v1",
+		sourceType: "bigquery_structured",
+		classification: "financial" as const,
+		contentHash: "hash-products",
+	},
+];
+
+/**
+ * Structured graph where "recent_transactions" needs product and dates. The
+ * selector reads them from the text only once the client has answered, and
+ * records every query it was shown.
+ */
+function clarifyingRagRuntime(seen: string[]) {
+	const structuredCatalog: BaseRagCatalogRepository = {
+		kind: "structured",
+		load: async () => ({
+			status: "ready",
+			catalog: {
+				kind: "structured",
+				version: "v1",
+				entries: [
+					{
+						id: "customer_products",
+						version: "v1",
+						allowedRoles: ["customer"],
+					},
+					{
+						id: "recent_transactions",
+						version: "v1",
+						allowedRoles: ["customer"],
+						parameters: [
+							{ name: "product_id", type: "string" },
+							{ name: "from_date", type: "date" },
+							{ name: "to_date", type: "date" },
+						],
+					},
+				],
+			},
+		}),
+	};
+	const dependencies = {
+		primaryJev: { assess: async () => "database" as const },
+		structuredCatalog,
+		knowledgeGraphCatalog: catalogRepo("knowledge_graph"),
+		structuredJev: {
+			select: async ({ query }: { query: string }) => {
+				seen.push(query);
+				const answered = query.includes("Respuesta del cliente");
+				return {
+					decision: "select" as const,
+					queryId: "recent_transactions",
+					version: "v1",
+					parameters: answered
+						? {
+								product_id: "PRD-AAA",
+								from_date: "2026-09-01",
+								to_date: "2026-09-30",
+							}
+						: {},
+				};
+			},
+		},
+		knowledgeGraphJev: { select: async () => ({ decision: "deny" as const }) },
+		retrievalPolicy: capabilityRetrievalPolicy,
+		structuredRag: {
+			executeSelection: async ({
+				selection,
+			}: {
+				selection: { queryId: string; parameters: Record<string, unknown> };
+			}) => {
+				if (selection.queryId === "customer_products") {
+					return { status: "ready" as const, evidence: productRows };
+				}
+				return selection.parameters.product_id === undefined
+					? {
+							status: "failed" as const,
+							reasonCode: "structured_parameters_missing",
+						}
+					: { status: "ready" as const, evidence: transactionRows };
+			},
+		},
+		knowledgeGraphRag: {
+			executeSelection: async () => ({
+				status: "failed" as const,
+				reasonCode: "knowledge_graph_runtime_disabled",
+			}),
+		},
+	};
+	return {
+		graph: createRagStateGraph(dependencies),
+		dependencies,
+	} as unknown as RagRetrievalRuntime;
+}
+
 const kgSignal: DecisionSignalProvider = {
 	assess: async () => ({
 		provider: "test-jev",
@@ -146,7 +272,11 @@ const open: Harness[] = [];
 
 /** Real server and WebSocket; the control_plane runner is injected, so no demo auth rule is bent. */
 async function start(
-	options: { signal?: DecisionSignalProvider } = {},
+	options: {
+		signal?: DecisionSignalProvider;
+		rag?: RagRetrievalRuntime;
+		model?: ModelProvider;
+	} = {},
 ): Promise<Harness> {
 	const calls = { structured: 0, knowledgeGraph: 0 };
 	const sessions = new InMemorySessionStore();
@@ -155,9 +285,9 @@ async function start(
 	const { runner } = createControlPlaneConversationRuntime({
 		sessions,
 		signal: options.signal ?? new HeuristicHitlDecisionSignalProvider(),
-		model: new SafeInformationalModelProvider(),
+		model: options.model ?? new SafeInformationalModelProvider(),
 		guardrail: allowGuardrail,
-		ragRuntime: ragRuntime(calls),
+		ragRuntime: options.rag ?? ragRuntime(calls),
 		routeFromSignal: true,
 	});
 	const conversationRuntime: ConversationHttpRuntime = {
@@ -239,5 +369,146 @@ describe("control_plane through the real server and WebSocket", () => {
 		expect(turn.status).toBe("completed");
 		expect(harness.calls.structured).toBe(0);
 		expect(harness.calls.knowledgeGraph).toBe(0);
+	});
+});
+
+describe("a clarification is answered in the next message of the thread", () => {
+	async function twoTurns(second: string) {
+		const seen: string[] = [];
+		const harness = await start({ rag: clarifyingRagRuntime(seen) });
+		const chat = await openChat({
+			baseUrl: harness.baseUrl,
+			actorId: "demo-customer-1",
+			origin,
+			timeoutMs: 10_000,
+		});
+		const first = await chat.send("cuales son mis ultimos movimientos");
+		const answered = await chat.send(second);
+		const third = await chat.send("cuales son mis ultimos movimientos");
+		await chat.close();
+		return { seen, first, answered, third };
+	}
+
+	test("names what is missing, lists the products and finishes the query", async () => {
+		const { seen, first, answered } = await twoTurns(
+			"PRD-AAA del 2026-09-01 al 2026-09-30",
+		);
+		expect(first.status).toBe("awaiting_clarification");
+		expect(first.reply).toContain("el producto (su código) y el periodo");
+		expect(first.reply).toContain("• PRD-AAA (Tarjeta Crédito, COP)");
+
+		expect(answered.status).toBe("completed");
+		expect(answered.reply).toContain("recent_transactions:v1: 1 resultado");
+		expect(answered.reply).toContain("concepto: compra de prueba");
+
+		// The selector saw the original query together with the exchange.
+		expect(seen[1]).toContain(
+			"Consulta original: cuales son mis ultimos movimientos",
+		);
+		expect(seen[1]).toContain("Respuesta del cliente: PRD-AAA del 2026-09-01");
+	});
+
+	test("the pending query is used once", async () => {
+		const { seen, third } = await twoTurns(
+			"PRD-AAA del 2026-09-01 al 2026-09-30",
+		);
+		expect(seen[2]).toBe("cuales son mis ultimos movimientos");
+		expect(third.status).toBe("awaiting_clarification");
+	});
+
+	test("a long message is a new question, not an answer", async () => {
+		const { seen } = await twoTurns(
+			`quiero saber ${"muchas cosas sobre mis movimientos ".repeat(8)}`,
+		);
+		expect(seen[1]).not.toContain("Consulta original");
+	});
+});
+
+describe("free text is answered by the model, behind privacy and guardrail", () => {
+	const modelSaying = (text: string) =>
+		new VertexSupportModelProvider(async () => ({
+			text,
+			inputTokens: 3,
+			outputTokens: 5,
+		}));
+
+	test("a greeting gets the generated answer and reads nothing", async () => {
+		const harness = await start({
+			model: modelSaying("¡Hola! ¿En qué puedo ayudarte con tu soporte?"),
+		});
+		const turn = await ask(harness, "hola");
+		expect(turn.status).toBe("completed");
+		expect(turn.reply).toBe("¡Hola! ¿En qué puedo ayudarte con tu soporte?");
+		expect(harness.calls.structured).toBe(0);
+	});
+
+	test("a model that writes a long number is blocked, not shown", async () => {
+		const harness = await start({
+			model: modelSaying("Claro, tu cuenta es 12345678901234."),
+		});
+		const turn = await ask(harness, "hola");
+		expect(turn.status).not.toBe("completed");
+		expect(turn.reply).not.toContain("12345678901234");
+	});
+});
+
+describe("the primary JEV decides the route, not keywords", () => {
+	const jev = (answer: { choice: string; confidence: number } | "down") =>
+		new TypeSafePrimaryDecisionSignalProvider({
+			baseUrl: "https://jev.example.test",
+			apiKey: "k",
+			model: "m",
+			timeoutMs: 1000,
+			relations: true,
+			fallback: new HeuristicHitlDecisionSignalProvider(),
+			fetch: (async () =>
+				answer === "down"
+					? new Response("{}", { status: 503 })
+					: new Response(JSON.stringify({ answers: { route: answer } }), {
+							status: 200,
+						})) as unknown as typeof fetch,
+		});
+
+	test("a data question with no keyword still reads the customer's data", async () => {
+		const harness = await start({
+			signal: jev({ choice: "customer_data", confidence: 0.95 }),
+		});
+		const turn = await ask(harness, "cuanto dinero tengo");
+		expect(turn.status).toBe("completed");
+		expect(harness.calls.structured).toBe(1);
+	});
+
+	test("a request for a person with no keyword pauses for approval", async () => {
+		const harness = await start({
+			signal: jev({ choice: "human_request", confidence: 0.95 }),
+		});
+		const turn = await ask(harness, "necesito que alguien me atienda");
+		expect(turn.status).toBe("pending_approval");
+		expect(harness.calls.structured).toBe(0);
+	});
+
+	test("an unrelated topic with no keyword is refused", async () => {
+		const harness = await start({
+			signal: jev({ choice: "out_of_domain", confidence: 0.95 }),
+		});
+		const turn = await ask(harness, "hablame de politica");
+		expect(turn.status).toBe("completed");
+		expect(harness.calls.structured).toBe(0);
+	});
+
+	test("low confidence asks for clarification instead of guessing", async () => {
+		const harness = await start({
+			signal: jev({ choice: "customer_data", confidence: 0.5 }),
+		});
+		const turn = await ask(harness, "cuanto dinero tengo");
+		expect(turn.status).toBe("awaiting_clarification");
+		expect(harness.calls.structured).toBe(0);
+	});
+
+	test("with the JEV down the keyword provider keeps the chat working", async () => {
+		const harness = await start({ signal: jev("down") });
+		const turn = await ask(harness, "cuales son mis ultimos movimientos");
+		expect(turn.status).toBe("completed");
+		expect(harness.calls.structured).toBe(1);
 	});
 });

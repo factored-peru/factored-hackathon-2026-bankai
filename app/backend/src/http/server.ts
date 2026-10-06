@@ -44,7 +44,12 @@ import { HeuristicHitlDecisionSignalProvider } from "../integrations/providers/h
 import { createKnowledgeGraphSelector } from "../integrations/providers/knowledge-graph-selector-runtime.js";
 import { SafeInformationalModelProvider } from "../integrations/providers/safe-informational-model-provider.js";
 import { createStructuredSelector } from "../integrations/providers/structured-selector-runtime.js";
+import { TypeSafePrimaryDecisionSignalProvider } from "../integrations/providers/typesafe-primary-signal-provider.js";
 import { createVertexBaselineChatProvider } from "../integrations/providers/vertex-baseline-chat-provider.js";
+import {
+	createVertexChatGenerate,
+	VertexSupportModelProvider,
+} from "../integrations/providers/vertex-support-model-provider.js";
 import {
 	createLlmCacheRuntime,
 	createSessionRuntime,
@@ -325,14 +330,34 @@ async function createDemoRuntime(
 			: runtimeEnv.CHAT_PIPELINE === "control_plane"
 				? createControlPlaneConversationRuntime({
 						sessions,
-						signal: new HeuristicHitlDecisionSignalProvider(),
-						model: new SafeInformationalModelProvider(),
+						signal: runtimeEnv.JEV_ENABLED
+							? new TypeSafePrimaryDecisionSignalProvider({
+									baseUrl: runtimeEnv.JEV_BASE_URL,
+									apiKey: runtimeEnv.JEV_API_KEY,
+									model: runtimeEnv.JEV_MODEL,
+									timeoutMs: runtimeEnv.JEV_TIMEOUT_MS,
+									// Offered only while the KG can answer: no dead-end route.
+									relations: options.knowledgeGraphRuntime != null,
+									fallback: new HeuristicHitlDecisionSignalProvider(),
+								})
+							: new HeuristicHitlDecisionSignalProvider(),
+						model: runtimeEnv.VERTEX_AI_ENABLED
+							? new VertexSupportModelProvider(
+									await createVertexChatGenerate(runtimeEnv),
+								)
+							: new SafeInformationalModelProvider(),
 						guardrail: createGuardrailProvider(runtimeEnv),
 						ragRuntime: await withDemoStructuredRag(runtimeEnv, bqActors, {
 							base: options.ragRetrievalRuntime ?? null,
 							customerIdentity: options.productive?.customerIdentity ?? null,
 						}),
 						routeFromSignal: true,
+						...(options.sessionRuntime === undefined
+							? {}
+							: {
+									pendingClarifications:
+										options.sessionRuntime.pendingClarifications,
+								}),
 					}).runner
 				: deterministicConversationRunner;
 	const conversation: ConversationHttpRuntime = {

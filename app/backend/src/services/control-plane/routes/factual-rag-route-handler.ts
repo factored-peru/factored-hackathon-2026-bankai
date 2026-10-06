@@ -1,5 +1,14 @@
+import type { SessionContext } from "../../../domain/session.js";
+import type { RagCatalog } from "../../retrieval/rag-catalog.js";
+import type { StructuredSelectDecision } from "../../retrieval/structured-rag.js";
 import type { WorkflowService } from "../../workflows/workflow-service.js";
 import type { BudgetTracker } from "../budget-tracker.js";
+import {
+	buildMissingParametersQuestion,
+	missingCallerParameters,
+	productListQueryId,
+	productsFromEvidence,
+} from "../clarification-question.js";
 import {
 	clarificationQuestionFor,
 	mapRagTerminal,
@@ -33,6 +42,47 @@ export class FactualRagRouteHandler implements AgentRouteHandler {
 		private readonly dependencies: RagStateGraphDependencies,
 		private readonly workflows: WorkflowService,
 	) {}
+
+	/**
+	 * Structured only: names the missing parameters and, when the product is
+	 * missing, lists the customer's own products so they can answer with a code.
+	 * Null keeps the generic question (and any failure while listing does too).
+	 */
+	private async missingParametersQuestion(input: {
+		reasonCode: string;
+		session: SessionContext;
+		traceId: string;
+		catalog: RagCatalog | null;
+		selection: StructuredSelectDecision | null;
+	}): Promise<string | null> {
+		if (input.reasonCode !== "structured_parameters_missing") return null;
+		const missing = missingCallerParameters(input);
+		let products: ReturnType<typeof productsFromEvidence> = [];
+		const listing = input.catalog?.entries.find(
+			(entry) => entry.id === productListQueryId,
+		);
+		if (missing.includes("product_id") && input.catalog && listing) {
+			try {
+				const listed = await this.dependencies.structuredRag.executeSelection({
+					session: input.session,
+					catalog: input.catalog,
+					selection: {
+						decision: "select",
+						queryId: listing.id,
+						version: listing.version,
+						parameters: {},
+					},
+					traceId: input.traceId,
+				});
+				if (listed.status === "ready") {
+					products = productsFromEvidence(listed.evidence);
+				}
+			} catch {
+				// The question is still useful without the list.
+			}
+		}
+		return buildMissingParametersQuestion({ missing, products });
+	}
 
 	async execute(
 		input: AuthorizedDecisionContext,
@@ -75,7 +125,14 @@ export class FactualRagRouteHandler implements AgentRouteHandler {
 		}
 		if (mapped.kind === "clarify") {
 			const questionKey = clarificationQuestionFor(mapped.reasonCode);
-			const question = clarificationQuestions[questionKey];
+			const question =
+				(await this.missingParametersQuestion({
+					reasonCode: mapped.reasonCode,
+					session: input.session,
+					traceId: input.request.traceId,
+					catalog: result.catalog,
+					selection: result.structuredSelection,
+				})) ?? clarificationQuestions[questionKey];
 			const pending = await this.workflows.requestClarification({
 				session: input.session,
 				threadId: input.request.threadId,

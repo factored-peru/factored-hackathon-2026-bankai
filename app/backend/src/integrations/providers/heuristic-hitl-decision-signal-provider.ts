@@ -35,6 +35,15 @@ export class HeuristicHitlDecisionSignalProvider
 			});
 		}
 
+		if (isSmallTalk(folded)) {
+			return signal({
+				domain: "in_domain",
+				routeHint: "llm",
+				requiresEscalation: false,
+				allowedRoutes: ["llm"],
+			});
+		}
+
 		if (isAmbiguous(folded)) {
 			return signal({
 				domain: "ambiguous",
@@ -110,6 +119,13 @@ function isLedgerRead(text: string): boolean {
 		) ||
 		/\b(movimento|movimentos|transacao|transação|extrato)\b/.test(text) ||
 		/\b(que es este|qué es este|o que e este|o que é este)\b/.test(text)
+	);
+}
+
+/** Greetings and thanks are conversation, not a request that needs detail. */
+function isSmallTalk(text: string): boolean {
+	return /^[\s¡¿]*(hola|holi|buenas|buenos dias|buenas tardes|buenas noches|hey|ola|oi|bom dia|boa tarde|boa noite|gracias|muchas gracias|obrigado|obrigada|ok|vale|listo|perfecto|adios|chao|tchau)\b[\s!.,¡?¿]*$/.test(
+		text,
 	);
 }
 

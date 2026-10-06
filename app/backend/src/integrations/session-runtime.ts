@@ -1,11 +1,13 @@
 import type { Env } from "../config/env.js";
 import type { PrivateDataBroker, SessionStore } from "../domain/session.js";
+import type { PendingClarificationStore } from "../services/conversations/pending-clarification.js";
 import type { LlmEphemeralCache } from "../services/ports/llm-ephemeral-cache.js";
 import type {
 	KeyValueStore,
 	KeyValueStoreFactory,
 } from "./kv/key-value-store.js";
 import { KvLlmCache, NoopLlmEphemeralCache } from "./kv/kv-llm-cache.js";
+import { KvPendingClarificationStore } from "./kv/kv-pending-clarification-store.js";
 import {
 	KvPrivateDataBroker,
 	privateDataEncryptionKeyFromConfig,
@@ -17,6 +19,8 @@ export type SessionRuntime = Readonly<{
 	sessionStore: SessionStore;
 	privateDataBroker: PrivateDataBroker;
 	llmCache: LlmEphemeralCache;
+	/** Query a thread waits to finish after the assistant asked for more data. */
+	pendingClarifications: PendingClarificationStore;
 	isReady(): boolean;
 	close(): Promise<void>;
 }>;
@@ -65,6 +69,10 @@ export async function createSessionRuntime(
 		sessionStore,
 		privateDataBroker,
 		llmCache: createLlmCache(store, settings),
+		pendingClarifications: new KvPendingClarificationStore(store, {
+			keyPrefix: settings.KV_KEY_PREFIX,
+			encryptionKey,
+		}),
 		isReady: () => store.isReady(),
 		close: () => store.close(),
 	};
