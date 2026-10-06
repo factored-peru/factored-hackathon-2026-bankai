@@ -3,6 +3,17 @@
 Complementa (no reemplaza) la matriz P0-48. Ejecuta **prompts sintéticos**
 contra baseline y control plane offline; escribe reportes saneados en disco.
 
+## Corpus
+
+| Métrica | Valor |
+| --- | --- |
+| Total prompts | **128** |
+| Locales | **64 `es` / 64 `pt`** (pares espejo) |
+| answerable (datos) | 56 — Structured allowlist + KG C1–C5 + llm informativo |
+| clarify | 16 |
+| escalate_hitl | 32 — H14/H2/ATM/scam/freeze/folio/etc. |
+| ood / deny / rails | 24 |
+
 ## Polaridad y locales
 
 | `polarity` | Significado |

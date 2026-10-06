@@ -25,12 +25,14 @@ with environment-sensitive fail-closed behavior.
 - In `staging` and `prod`, an empty or unset `SERVICE_TOKEN` is an invalid
   configuration and the process must fail during startup.
 - Configured `SERVICE_TOKEN` requires `Authorization: Bearer <token>`.
-- `POST /v1/items` and `GET /v1/items/{itemId}` are protected.
+- OpenAPI declares `components.securitySchemes.serviceToken` for clients that
+  generate auth-aware SDKs. After removal of the scaffold `POST/GET /v1/items`
+  routes, **no product path currently applies** this scheme; the helper
+  `requireServiceToken` remains for future S2S routes. Session-cookie auth
+  (ADR 0006 / demo) covers user-facing dispute and conversation APIs.
 - `/v1/health/live`, `/v1/health/ready` and `/openapi.json` stay public.
 - Missing credentials emit `SVC-CORE-2001`.
 - Invalid credentials emit `SVC-CORE-2002`.
-- OpenAPI declares `components.securitySchemes.serviceToken` and applies it only
-  to protected routes.
 - This service token authenticates service-to-service callers. It is not a
   browser user session and does not replace user authentication or authorization.
 
@@ -42,5 +44,6 @@ with environment-sensitive fail-closed behavior.
   a secret manager, never through versioned TOML or docs.
 - User authentication, authorization scopes and agent policy remain separate
   concerns and are defined by ADR 0006 and the agent control-plane ADRs.
-- Clients generated from OpenAPI can detect protected operations.
+- Clients generated from OpenAPI can detect the scheme even when no path uses it
+  yet.
 - Changes to route protection or auth scheme require a new ADR.

@@ -14,7 +14,6 @@ import {
 } from "../domain/disputes/contracts.js";
 import { errorCodes } from "../domain/error-codes.js";
 import { AppError } from "../domain/errors.js";
-import { createItemSchema } from "../domain/items.js";
 import type { SessionContext, SessionStore } from "../domain/session.js";
 import type {
 	KgAdminError,
@@ -22,7 +21,6 @@ import type {
 } from "../services/admin/kg-admin-service.js";
 import type { ConversationService } from "../services/conversations/conversation-service.js";
 import type { DisputeSupportService } from "../services/disputes/dispute-support-service.js";
-import type { ItemService } from "../services/item-service.js";
 import type {
 	AttachmentStore,
 	ConversationEventPublisher,
@@ -68,7 +66,11 @@ function tokensMatch(actual: string, expected: string): boolean {
 	);
 }
 
-function requireServiceToken(request: FastifyRequest, runtimeEnv: Env): void {
+/** Retained for future S2S routes (ADR 0003). No product path applies it after items removal. */
+export function requireServiceToken(
+	request: FastifyRequest,
+	runtimeEnv: Env,
+): void {
 	if (runtimeEnv.SERVICE_TOKEN.length === 0) {
 		return;
 	}
@@ -199,7 +201,6 @@ function mapKgAdminError(error: unknown): never {
 
 export function registerRoutes(
 	app: FastifyInstance,
-	itemService: ItemService,
 	runtimeEnv: Env = env,
 	integrations?: AppIntegrations,
 	disputeRuntime?: DisputeHttpRuntime,
@@ -215,7 +216,8 @@ export function registerRoutes(
 	}));
 
 	app.get("/v1/health/ready", async () => {
-		const storeReady = await itemService.isReady();
+		// Process-local scaffold store removed; keep storeReady for client compatibility.
+		const storeReady = true;
 		const databaseReady =
 			runtimeEnv.DATABASE_ENABLED && integrations
 				? await integrations.database.isReady()
@@ -255,19 +257,6 @@ export function registerRoutes(
 				),
 			},
 		};
-	});
-
-	app.post("/v1/items", async (request, reply) => {
-		requireServiceToken(request, runtimeEnv);
-		const input = createItemSchema.parse(request.body);
-		const item = await itemService.create(input);
-		return reply.code(201).send(item);
-	});
-
-	app.get("/v1/items/:itemId", async (request) => {
-		requireServiceToken(request, runtimeEnv);
-		const params = request.params as { itemId: string };
-		return itemService.get(params.itemId);
 	});
 
 	app.post("/v1/sessions", async (request, reply) => {

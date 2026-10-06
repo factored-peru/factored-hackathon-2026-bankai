@@ -5,6 +5,11 @@ Este documento es evidencia operativa, no reemplaza los ADR ni convierte la
 hoja de tareas en arquitectura normativa. Las comprobaciones GCP no leyeron
 contenido de Firestore, resultados BigQuery ni valores de secretos.
 
+**Reconciliación post PR #13:** el chat staging sigue en baseline, pero el
+control plane / HITL / casuísticas ya están en `main`. Leer
+[`task-status-reconciled-20261005.md`](task-status-reconciled-20261005.md)
+antes de tratar P0-23 como “sin progreso”.
+
 ## Snapshot
 
 - Git: rama de trabajo `feat/p0-fase5-backend-productive`; tip incluye Fase 2
@@ -76,28 +81,34 @@ contenido de Firestore, resultados BigQuery ni valores de secretos.
 
 | Estado | Cierre pendiente |
 | --- | --- |
-| Control plane | Conectar StateGraph al runner de conversación productivo (P0-23). |
+| Control plane | **Código en `main` (PR #13):** StateGraph + `ControlPlaneConversationRunner` + puente `requiresEscalation`→`escalation.request` + casuísticas/HITL tests. **DoD P0-23 abierto:** cutover staging aún `CHAT_PIPELINE=baseline` / sin agentic — ver [`handoffs/agentic-control-plane-cutover.md`](handoffs/agentic-control-plane-cutover.md). |
 | Observabilidad y guardrails | Model Armor/SDP autorizados; telemetría saneada sólo tras correlador en Secret Manager (P0-33–34). |
 | Infraestructura | Declarar/importar recursos, `plan` revisado y apply autorizado de IAM/secretos/red/Run/Job (P0-36–37). |
-| Ingesta administrada | STS → GCS → Eventarc → Cloud Tasks → worker → BigQuery (P0-41–43, P0-49). |
+| Ingesta administrada | STS → GCS → Eventarc → Cloud Tasks → worker → BigQuery (P0-41–43, P0-49). Checklist: [`handoffs/adr0020-ingest-and-tf.md`](handoffs/adr0020-ingest-and-tf.md). |
 
 ### All
 
 | Estado | Cierre pendiente |
 | --- | --- |
-| Calidad transversal | QA E2E, resiliencia, aislamiento y HITL en entorno integrado (P0-39). |
+| Calidad transversal | QA E2E integrado (P0-39) abierto; evidencia local HITL/casuísticas en checklist [`handoffs/p0-39-e2e-checklist.md`](handoffs/p0-39-e2e-checklist.md). |
 | Sesiones | **COMPLETED** evidencia SessionManager Valkey/Firestore (P0-47); Auth Firebase real sigue en Harumi. |
 | Alcance posterior | Voz y documentos permanecen P1; no bloquean el cierre P0. |
 
 ## Próxima secuencia segura
 
 1. Corregir correlador → Secret Manager y `terraform plan` revisado (sin apply
-   destructivo); ver `deploy/docs/live-telemetry-handoff.md`.
+   destructivo); ver `deploy/docs/live-telemetry-handoff.md` y
+   [`handoffs/adr0020-ingest-and-tf.md`](handoffs/adr0020-ingest-and-tf.md).
 2. ADR 0020 raw ingest (Alexandra) sin borrar `cur`/KG publicados.
 3. Seed Firestore `--execute` autorizado (workflow_dispatch) si falta overlay
-   RBAC en staging; luego Auth Firebase (Harumi) y E2E (P0-39). P0-48 ya
-   cierra la matriz CI (48 core + 5 extensiones KG C1–C5); no reabrir por
-   baseline humana.
+   RBAC en staging; luego Auth Firebase (Harumi; smoke en
+   [`handoffs/frontend-auth-smoke-p0-16-22-38.md`](handoffs/frontend-auth-smoke-p0-16-22-38.md))
+   y cutover control_plane
+   ([`handoffs/agentic-control-plane-cutover.md`](handoffs/agentic-control-plane-cutover.md)).
+4. E2E P0-39
+   ([`handoffs/p0-39-e2e-checklist.md`](handoffs/p0-39-e2e-checklist.md)).
+   P0-48 ya cierra la matriz CI (48 core + 5 extensiones KG C1–C5); no reabrir
+   por baseline humana.
 
 Las acciones que escriben recursos GCP, ejecutan jobs BigQuery o activan
 proveedores requieren autorización y credenciales apropiadas fuera de Git.
