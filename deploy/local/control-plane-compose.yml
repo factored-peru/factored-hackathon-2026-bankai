@@ -1,0 +1,54 @@
+# Local only. Layered on backend-compose.yml and chat-compose.yml to run the
+# governed agent (CHAT_PIPELINE=control_plane) with the demo login against REAL
+# GCP services: Firestore, BigQuery, Vertex AI, Model Armor, GCS and the JEV.
+#
+#   docker compose -f backend-compose.yml -f chat-compose.yml \
+#     -f control-plane-compose.yml up --build
+#
+# The demo login may drive the agent outside prod (ADR 0022); SVC-CORE-9006 keeps
+# it out of prod. Use synthetic text only: messages reach Vertex AI and Model
+# Armor (ADR 0010). Nothing here is a secret: each value comes from your shell,
+# and the credentials file is mounted read-only from outside the repository.
+# GOOGLE_ADC_FILE is your own Application Default Credentials file
+# (gcloud auth application-default login); never copy it into Git.
+#
+# SESSION_STORE_ENABLED and PRIVATE_DATA_ENCRYPTION_KEY feed the Valkey that
+# backend-compose.yml already starts; the encryption key is any random 32+
+# character local value.
+services:
+  base-bun-typescript-service:
+    environment:
+      CHAT_PIPELINE: control_plane
+      AGENTIC_CHAT_ENABLED: "true"
+      BASELINE_CHAT_ENABLED: "false"
+      CHAT_ENABLED: "true"
+      SESSION_STORE_ENABLED: "true"
+      PRIVATE_DATA_ENCRYPTION_KEY: ${PRIVATE_DATA_ENCRYPTION_KEY:?set PRIVATE_DATA_ENCRYPTION_KEY}
+      FIRESTORE_ENABLED: "true"
+      GCS_ENABLED: "true"
+      GCS_UPLOAD_BUCKET: ${GCS_UPLOAD_BUCKET:?set GCS_UPLOAD_BUCKET}
+      BIGQUERY_ENABLED: "true"
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:?set GOOGLE_CLOUD_PROJECT}
+      GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:?set GOOGLE_CLOUD_LOCATION}
+      BIGQUERY_DATASET: ${BIGQUERY_DATASET:?set BIGQUERY_DATASET}
+      # Needed by the BigQuery-backed demo actors; any random local value.
+      DEMO_ACTOR_HMAC_KEY: ${DEMO_ACTOR_HMAC_KEY:?set DEMO_ACTOR_HMAC_KEY}
+      VERTEX_AI_ENABLED: "true"
+      VERTEX_AI_PROJECT_ID: ${VERTEX_AI_PROJECT_ID:?set VERTEX_AI_PROJECT_ID}
+      VERTEX_AI_LOCATION: ${VERTEX_AI_LOCATION:?set VERTEX_AI_LOCATION}
+      VERTEX_AI_MODEL: ${VERTEX_AI_MODEL:?set VERTEX_AI_MODEL}
+      JEV_ENABLED: "true"
+      JEV_BASE_URL: ${JEV_BASE_URL:?set JEV_BASE_URL}
+      JEV_API_KEY: ${JEV_API_KEY:?set JEV_API_KEY}
+      JEV_MODEL: ${JEV_MODEL:?set JEV_MODEL}
+      MODEL_ARMOR_ENABLED: "true"
+      MODEL_ARMOR_PROJECT_ID: ${MODEL_ARMOR_PROJECT_ID:?set MODEL_ARMOR_PROJECT_ID}
+      MODEL_ARMOR_LOCATION: ${MODEL_ARMOR_LOCATION:?set MODEL_ARMOR_LOCATION}
+      MODEL_ARMOR_INSPECT_TEMPLATE: ${MODEL_ARMOR_INSPECT_TEMPLATE:?set MODEL_ARMOR_INSPECT_TEMPLATE}
+      # Structured RAG catalog served from the image; the file is not a secret.
+      # Only the example is versioned (Terraform dev uses it too); point this at
+      # your own file to use a different catalog.
+      STRUCTURED_CATALOG_PATH: ${STRUCTURED_CATALOG_PATH:-config/structured-catalog.example.json}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/credentials/adc.json
+    volumes:
+      - ${GOOGLE_ADC_FILE:?set GOOGLE_ADC_FILE}:/run/credentials/adc.json:ro

@@ -114,6 +114,16 @@ y con `SERVICE_TOKEN` en tu entorno:
    `TELEMETRY_CORRELATOR_KEY`, y `BIGQUERY_EVAL_DATASET` para las filas. Cada
    mensaje llama a Vertex AI y se factura. Detén todo con
    `docker compose -f backend-compose.yml -f chat-compose.yml down -v`.
+3. **Agente gobernado (`control_plane`) con login demo**: añade
+   `-f control-plane-compose.yml` y define en tu shell, además de las variables
+   del punto 2, `PRIVATE_DATA_ENCRYPTION_KEY` (32+ caracteres locales),
+   `GCS_UPLOAD_BUCKET`, `JEV_BASE_URL`, `JEV_API_KEY`, `JEV_MODEL`,
+   `MODEL_ARMOR_PROJECT_ID`, `MODEL_ARMOR_LOCATION` y
+   `MODEL_ARMOR_INSPECT_TEMPLATE`. Usa Firestore, BigQuery, Vertex AI, Model
+   Armor, GCS y el JEV reales, así que cada mensaje se factura: sólo texto
+   sintético. Una consulta de movimientos recorre el grafo (Structured) y
+   responde en texto legible; "quiero hablar con un humano" queda en
+   `pending_approval` y un mensaje ambiguo en `awaiting_clarification`.
 
 Con la telemetría activa, cada turno del baseline emite un span `evaluation`
 (`bankai.pipeline=baseline`, latencia, llamadas al modelo, intentos de

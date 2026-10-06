@@ -7,7 +7,10 @@ import Fastify from "fastify";
 import { type Env, env, validateRuntimeConfiguration } from "../config/env.js";
 import { demoDisputePack } from "../domain/disputes/demo-fixtures.js";
 import { BigQueryDemoActorDirectory } from "../integrations/bigquery/bigquery-demo-actor-directory.js";
-import { createStructuredQueryRuntime } from "../integrations/bigquery/structured-rag-runtime.js";
+import {
+	createStructuredQueryRuntime,
+	createStructuredRag,
+} from "../integrations/bigquery/structured-rag-runtime.js";
 import { LocalBucket, type ObjectBucket } from "../integrations/bucket.js";
 import { CachingSessionStore } from "../integrations/cache/caching-session-store.js";
 import { type Cache, LocalCache } from "../integrations/cache.js";
@@ -41,6 +44,7 @@ import { createGuardrailProvider } from "../integrations/providers/guardrail-pro
 import { HeuristicHitlDecisionSignalProvider } from "../integrations/providers/heuristic-hitl-decision-signal-provider.js";
 import { createKnowledgeGraphSelector } from "../integrations/providers/knowledge-graph-selector-runtime.js";
 import { SafeInformationalModelProvider } from "../integrations/providers/safe-informational-model-provider.js";
+import { createStructuredSelector } from "../integrations/providers/structured-selector-runtime.js";
 import { createVertexBaselineChatProvider } from "../integrations/providers/vertex-baseline-chat-provider.js";
 import {
 	createLlmCacheRuntime,
@@ -54,6 +58,7 @@ import { BaselineQueryTool } from "../services/baseline/baseline-query-tool.js";
 import {
 	createRagRetrievalRuntime,
 	type RagRetrievalRuntime,
+	withStructuredRag,
 } from "../services/control-plane/rag-retrieval-runtime.js";
 import { ConversationService } from "../services/conversations/conversation-service.js";
 import { deterministicConversationRunner } from "../services/conversations/deterministic-conversation-runner.js";
@@ -326,7 +331,11 @@ async function createDemoRuntime(
 						signal: new HeuristicHitlDecisionSignalProvider(),
 						model: new SafeInformationalModelProvider(),
 						guardrail: createGuardrailProvider(runtimeEnv),
-						ragRuntime: options.ragRetrievalRuntime ?? null,
+						ragRuntime: await withDemoStructuredRag(runtimeEnv, bqActors, {
+							base: options.ragRetrievalRuntime ?? null,
+							customerIdentity: options.productive?.customerIdentity ?? null,
+						}),
+						routeFromSignal: true,
 					}).runner
 				: deterministicConversationRunner;
 	const conversation: ConversationHttpRuntime = {
@@ -362,6 +371,49 @@ async function createDemoRuntime(
 			),
 		},
 	};
+}
+
+/**
+ * Adds the Structured branch to the control_plane graph when BigQuery, the JEV
+ * and Vertex AI are on; otherwise the graph keeps only what `base` carries and
+ * Structured reads fail closed. The customer id comes from the session, never
+ * from the prompt or the model.
+ */
+async function withDemoStructuredRag(
+	runtimeEnv: Env,
+	demoActors: BigQueryDemoActorDirectory | null,
+	options: {
+		base: RagRetrievalRuntime | null;
+		customerIdentity: CustomerIdentityResolver | null;
+	},
+): Promise<RagRetrievalRuntime | null> {
+	if (
+		demoActors === null ||
+		!runtimeEnv.BIGQUERY_ENABLED ||
+		!runtimeEnv.JEV_ENABLED ||
+		!runtimeEnv.VERTEX_AI_ENABLED
+	) {
+		return options.base;
+	}
+	const selector = await createStructuredSelector(runtimeEnv);
+	const durableIdentity = options.customerIdentity;
+	const structured = await createStructuredRag(runtimeEnv, {
+		selector,
+		identity: {
+			async resolve(session) {
+				if (durableIdentity !== null) {
+					const bound = await durableIdentity.resolve(session);
+					if (bound !== null) return bound;
+				}
+				return demoActors.customerIdForActor(session.userId);
+			},
+		},
+	});
+	return withStructuredRag(options.base, {
+		catalog: structured.catalog,
+		rag: structured.rag,
+		selector,
+	});
 }
 
 async function createBaselineRunner(

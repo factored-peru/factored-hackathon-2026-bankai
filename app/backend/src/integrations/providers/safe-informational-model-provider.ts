@@ -4,6 +4,7 @@ import type {
 	ModelInvocation,
 } from "../../domain/control/contracts.js";
 import type { ModelEvidence } from "../../domain/retrieval/contracts.js";
+import { composeEvidenceText } from "../../services/control-plane/evidence-text.js";
 import type { ModelProvider } from "../../services/ports/control.js";
 
 const SAFE_INFORMATIONAL =
@@ -33,10 +34,11 @@ export class SafeInformationalModelProvider implements ModelProvider {
 		traceId: string;
 	}): Promise<ModelInvocation<string>> {
 		const fromEvidence =
-			typeof input.authorizedResult === "string" &&
+			composeEvidenceText(input.authorizedResult) ??
+			(typeof input.authorizedResult === "string" &&
 			input.authorizedResult.length > 0
 				? input.authorizedResult
-				: SAFE_INFORMATIONAL;
+				: SAFE_INFORMATIONAL);
 		return {
 			value: fromEvidence,
 			usage: { inputTokens: 1, outputTokens: 1 },

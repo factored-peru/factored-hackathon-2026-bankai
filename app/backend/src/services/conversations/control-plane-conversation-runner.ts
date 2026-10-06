@@ -6,6 +6,10 @@ import { defaultAgentBudget } from "../../domain/control/contracts.js";
 import type { AgentControlService } from "../control-plane/agent-control-service.js";
 import type { ConversationRunner } from "../ports/conversation.js";
 
+/** Fixed text: it carries no user data and promises no outcome or timing. */
+export const pendingApprovalNotice =
+	"Tu solicitud quedó pendiente de revisión por un asesor.";
+
 export function createControlPlaneConversationRunner(
 	service: AgentControlService,
 ): ConversationRunner {
@@ -39,9 +43,10 @@ export function createControlPlaneConversationRunner(
 			};
 		}
 		if (result.status === "pending_approval") {
+			await input.onDelta(pendingApprovalNotice);
 			return {
 				status: "pending_approval",
-				response: "",
+				response: pendingApprovalNotice,
 				decisionId: result.decisionId,
 				workflowId: result.workflowId,
 				approvalId: result.approvalId,

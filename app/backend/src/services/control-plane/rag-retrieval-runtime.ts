@@ -8,7 +8,10 @@
  */
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import type { ImmutableKnowledgeGraphArtifactRepository } from "../retrieval/knowledge-graph-artifacts.js";
-import type { KnowledgeGraphRag } from "../retrieval/knowledge-graph-rag.js";
+import type {
+	KnowledgeGraphRag,
+	KnowledgeGraphRagExecutor,
+} from "../retrieval/knowledge-graph-rag.js";
 import type { KnowledgeGraphOperationSelector } from "../retrieval/knowledge-graph-selection.js";
 import type { BaseRagCatalogRepository } from "../retrieval/rag-catalog.js";
 import type {
@@ -55,6 +58,21 @@ const unavailableStructuredCatalog: BaseRagCatalogRepository = {
 	}),
 };
 
+const unavailableKnowledgeGraphCatalog: BaseRagCatalogRepository = {
+	kind: "knowledge_graph",
+	load: async () => ({
+		status: "unavailable",
+		reasonCode: "knowledge_graph_runtime_disabled",
+	}),
+};
+
+const unavailableKnowledgeGraphRag: KnowledgeGraphRagExecutor = {
+	executeSelection: async () => ({
+		status: "failed",
+		reasonCode: "knowledge_graph_runtime_disabled",
+	}),
+};
+
 const unavailableStructuredRag: StructuredRagExecutor = {
 	executeSelection: async () => ({
 		status: "failed",
@@ -67,7 +85,8 @@ const unavailableStructuredRag: StructuredRagExecutor = {
  * Pass real structured/JEV adapters when AGENTIC_CHAT / BigQuery / JEV are on.
  */
 export function createRagRetrievalRuntime(input: {
-	knowledgeGraph: KnowledgeGraphRuntimeBinding;
+	/** Optional: without an artifact the KG branch fails closed (unavailable). */
+	knowledgeGraph?: KnowledgeGraphRuntimeBinding;
 	structuredCatalog?: BaseRagCatalogRepository;
 	structuredRag?: StructuredRagExecutor;
 	primaryJev?: PrimaryJevRouter;
@@ -79,12 +98,14 @@ export function createRagRetrievalRuntime(input: {
 	const base = {
 		primaryJev: input.primaryJev ?? relationsPrimaryJev,
 		structuredCatalog: input.structuredCatalog ?? unavailableStructuredCatalog,
-		knowledgeGraphCatalog: input.knowledgeGraph.catalog,
+		knowledgeGraphCatalog:
+			input.knowledgeGraph?.catalog ?? unavailableKnowledgeGraphCatalog,
 		structuredJev: input.structuredJev ?? denyStructuredSelector,
 		knowledgeGraphJev: input.knowledgeGraphJev ?? denyKnowledgeGraphSelector,
 		retrievalPolicy: input.retrievalPolicy ?? capabilityRetrievalPolicy,
 		structuredRag: input.structuredRag ?? unavailableStructuredRag,
-		knowledgeGraphRag: input.knowledgeGraph.rag,
+		knowledgeGraphRag:
+			input.knowledgeGraph?.rag ?? unavailableKnowledgeGraphRag,
 	};
 	const dependencies: RagStateGraphDependencies =
 		input.checkpointer === undefined
@@ -94,4 +115,26 @@ export function createRagRetrievalRuntime(input: {
 		dependencies,
 		graph: createRagStateGraph(dependencies),
 	};
+}
+
+/**
+ * Binds the Structured branch (BigQuery catalog, executor and specialized JEV)
+ * to a runtime. The KG branch and the retrieval policy stay as `base` has them;
+ * with no base the KG branch is unavailable and fails closed.
+ */
+export function withStructuredRag(
+	base: RagRetrievalRuntime | null,
+	structured: Readonly<{
+		catalog: BaseRagCatalogRepository;
+		rag: StructuredRagExecutor;
+		selector: StructuredQuerySelector;
+	}>,
+): RagRetrievalRuntime {
+	const dependencies: RagStateGraphDependencies = {
+		...(base ?? createRagRetrievalRuntime({})).dependencies,
+		structuredCatalog: structured.catalog,
+		structuredRag: structured.rag,
+		structuredJev: structured.selector,
+	};
+	return { dependencies, graph: createRagStateGraph(dependencies) };
 }

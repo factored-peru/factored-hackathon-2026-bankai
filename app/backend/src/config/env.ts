@@ -377,7 +377,11 @@ export function validateRuntimeConfiguration(settings: Env): Env {
 		]
 			.filter(([, enabled]) => !enabled)
 			.map(([name]) => name);
-		if (settings.DEMO_AUTH_ENABLED) missing.push("DEMO_AUTH_ENABLED=false");
+		// ADR 0022: the demo login may drive the agent outside prod; SVC-CORE-9006
+		// already forbids it in prod, where Firebase Auth (ADR 0006) takes over.
+		if (settings.DEMO_AUTH_ENABLED && settings.APP_ENV === "prod") {
+			missing.push("DEMO_AUTH_ENABLED=false");
+		}
 		if (missing.length > 0) {
 			throw new Error(
 				`SVC-CORE-9010: AGENTIC_CHAT_ENABLED requires ${missing.join(", ")}`,

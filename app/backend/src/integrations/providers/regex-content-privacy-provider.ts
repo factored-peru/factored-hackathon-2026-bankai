@@ -20,7 +20,10 @@ const patterns: readonly Pattern[] = [
 	},
 	{
 		classification: "personal",
-		regex: /\b\+?\d[\d ()-]{7,}\d\b/g,
+		// Phone-like digit groups. Not a date (aaaa-mm-dd, dd-mm-aaaa) and not an
+		// amount with decimals: MX/BR/CO phones are 2-4-4, 3-3-4 or 2-5-4 groups.
+		regex:
+			/\b(?<![\d.,-])(?!\d{4}-\d{2}-\d{2}(?!\d))(?!\d{2}-\d{2}-\d{4}(?!\d))\+?\d[\d ()-]{7,}\d\b(?![.,]\d)/g,
 		safeValue: "[PHONE_REDACTED]",
 	},
 	{

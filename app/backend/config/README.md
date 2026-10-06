@@ -122,6 +122,12 @@ El backend rechaza el arranque si falta alguno o si se intenta mezclarlo con
 `AGENTIC_CHAT_ENABLED=true`, `CHAT_ENABLED=true`, `REALTIME_ENABLED=true` y
 `BASELINE_CHAT_ENABLED=false` (`SVC-CORE-9022`). Publica
 `awaiting_clarification` / `pending_approval` / `completed` según casuística.
+`AGENTIC_CHAT_ENABLED` admite `DEMO_AUTH_ENABLED=true` fuera de `prod` (ADR
+0022); en `prod` sigue prohibido (`SVC-CORE-9006`) hasta que exista Firebase
+Auth (ADR 0006). El resto de `SVC-CORE-9010` (Firestore, Valkey, BigQuery, JEV,
+Vertex AI, Model Armor, GCS) sigue siendo obligatorio. Con BigQuery, JEV y Vertex
+AI activos, `control_plane` conecta la rama Structured del grafo; sin ellos esa
+rama falla cerrada.
 
 El baseline recibe texto, el DDL estático de las tablas relevantes del
 diccionario y una herramienta nativa `retrieve_context`. La herramienta carga

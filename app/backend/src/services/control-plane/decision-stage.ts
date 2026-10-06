@@ -1,4 +1,8 @@
-import type { DecisionRouteKind } from "../../domain/control/contracts.js";
+import type {
+	DecisionRouteKind,
+	DecisionSignal,
+	ModelDecision,
+} from "../../domain/control/contracts.js";
 import {
 	decisionSignalSchema,
 	guardrailResultSchema,
@@ -36,7 +40,60 @@ const defaultRouteConfidenceThreshold = 0.85;
 export type DecisionGateOptions = Readonly<{
 	domainConfidenceThreshold?: number;
 	routeConfidenceThreshold?: number;
+	/**
+	 * ADR 0004: the primary JEV routes and the model never picks a retrieval
+	 * route. When on, a confident in-domain `database` or `rag` hint becomes the
+	 * route without calling the model. Off by default so every other composition
+	 * keeps its model-driven routing.
+	 */
+	routeFromSignal?: boolean;
 }>;
+
+type SignalRetrievalRoute = Readonly<{
+	modelDecision: Extract<ModelDecision, { kind: "route" }>;
+	route: Extract<NormalizedRoute, { route: "rag" | "database" }>;
+}>;
+
+/**
+ * Turns a confident, allowed `rag` or `database` hint into the matching route.
+ * `database` carries a read-only placeholder call: it is not a tool to run (the
+ * factual handler ignores it) and, as a `route` decision rather than a `tool`
+ * one, policy treats it as an informational read, not a matrix operation.
+ */
+function signalRetrievalRoute(input: {
+	signal: DecisionSignal;
+	query: string;
+	traceId: string;
+	routeConfidenceThreshold: number;
+}): SignalRetrievalRoute | null {
+	const { signal } = input;
+	const hint = signal.routeHint;
+	if (signal.domain !== "in_domain") return null;
+	if (hint !== "database" && hint !== "rag") return null;
+	if (signal.routeConfidence < input.routeConfidenceThreshold) return null;
+	if (
+		signal.allowedRoutes !== undefined &&
+		!signal.allowedRoutes.includes(hint)
+	) {
+		return null;
+	}
+	if (hint === "rag") {
+		return {
+			modelDecision: { kind: "route", route: "rag", query: input.query },
+			route: { route: "rag", query: input.query },
+		};
+	}
+	const call = {
+		toolId: "retrieval.read",
+		version: "1",
+		arguments: {},
+		idempotencyKey: `read:${input.traceId}`,
+	};
+	return {
+		modelDecision: { kind: "route", route: "database", call },
+		route: { route: "database", call },
+	};
+}
 
 function gatedRoute(input: {
 	domain: "in_domain" | "out_of_domain" | "ambiguous";
@@ -161,6 +218,23 @@ export class AgentDecisionStage {
 				modelDecision,
 				route: jevRoute,
 			};
+		}
+
+		if (this.options.routeFromSignal === true) {
+			const routed = signalRetrievalRoute({
+				signal,
+				query: input.prompt.content,
+				traceId: input.request.traceId,
+				routeConfidenceThreshold,
+			});
+			if (routed !== null) {
+				return {
+					...input,
+					signal,
+					modelDecision: routed.modelDecision,
+					route: routed.route,
+				};
+			}
 		}
 
 		budget.consume("llmCalls");

@@ -85,6 +85,11 @@ export type ControlPlaneRunnerDeps = Readonly<{
 	audit?: AuditSink;
 	idempotency?: IdempotencyStore;
 	now?: () => Date;
+	/**
+	 * Route confident `database` / `rag` hints of the primary signal straight to
+	 * the factual graph instead of asking the model (ADR 0004). Off by default.
+	 */
+	routeFromSignal?: boolean;
 }>;
 
 export function createControlPlaneConversationRuntime(
@@ -158,7 +163,12 @@ export function createControlPlaneConversationRuntime(
 			{ project: async () => defaultDecisionState },
 			deps.now ?? (() => new Date()),
 		),
-		new AgentDecisionStage(deps.signal, deps.model, deps.guardrail),
+		new AgentDecisionStage(
+			deps.signal,
+			deps.model,
+			deps.guardrail,
+			deps.routeFromSignal === true ? { routeFromSignal: true } : {},
+		),
 		new AgentPolicyStage(policy, workflows),
 		new AgentRouteStage(routeHandlers),
 		new AgentResponseStage(
