@@ -222,13 +222,16 @@ en la columna `Respuesta` de la hoja.
 - [~] Fase 6: CI determinista con matriz **48 core + 5 extensiones KG C1–C5**
       (`eval:run`/`eval:gate` en PR; P0-48 `COMPLETED`). Pendiente: E2E P0-39,
       baseline humana / umbrales bloqueantes (ADR 0015), JEV nocturno.
-- [ ] Dependencias Harumi: interfaz Auth/CORS/smoke documentada; P0-38 no
-      cerrado sin App Hosting + Auth.
-- [ ] Hoja `factored_tasks.xlsx` actualizada sin contradecir ADR; sin secretos
-      ni PII en Git.
-- [ ] Auditoría
+- [x] Dependencias Harumi: interfaz Auth/CORS/smoke documentada en
+      [`handoffs/frontend-auth-smoke-p0-16-22-38.md`](handoffs/frontend-auth-smoke-p0-16-22-38.md);
+      P0-38 no cerrado sin App Hosting + Auth.
+- [x] Hoja `factored_tasks.xlsx` `Respuesta` reconciliada 2026-10-05 (post
+      PR #13) sin marcar DoD cloud como `COMPLETED`; sin secretos ni PII en Git.
+- [x] Auditoría
       [`task-implementation-audit-20261004.md`](task-implementation-audit-20261004.md)
-      contrastada al cierre (o supersedida por una auditoría nueva fechada).
+      supersedida para estado operativo por
+      [`task-status-reconciled-20261005.md`](task-status-reconciled-20261005.md)
+      (+ contraste GCP en `task-status-gcp-20261005.md`).
 
 ## 7. Referencias ADR (sin reescritura normativa)
 

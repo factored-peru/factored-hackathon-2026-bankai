@@ -12,6 +12,10 @@
   (Ricardo) frente a ADR y código local.
 - `task-status-gcp-20261005.md`: contraste operativo de las tareas P0 de
   Ricardo, Alexandra y All contra Git y los recursos GCP visibles.
+- `task-status-reconciled-20261005.md`: reconciliación post PR #13 (control
+  plane/HITL en repo vs baseline en staging; handoffs de cierre).
+- `handoffs/`: checklists de desbloqueo frontend/Auth, cutover agentic,
+  ingesta ADR 0020/TF y E2E P0-39.
 - `task-delivery-phases-p0.md`: plan operativo no normativo de cierre P0
   por fases para Ricardo/All.
 - `product/`: brief de Dispute Transaction Support y matriz de capacidades

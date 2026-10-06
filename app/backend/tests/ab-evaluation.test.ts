@@ -32,25 +32,33 @@ import {
 
 describe("local A/B evaluation", () => {
 	test("exposes polarity/locale Latam corpus with catalog allowlists", () => {
-		expect(selectAbScenarios("phase-1").length).toBeGreaterThanOrEqual(3);
-		expect(selectAbScenarios("phase-2").length).toBeGreaterThanOrEqual(20);
-		expect(abEvaluationScenarios.length).toBeGreaterThanOrEqual(55);
-		expect(abEvaluationScenarios.length).toBeLessThanOrEqual(70);
+		expect(selectAbScenarios("all").length).toBe(128);
+		expect(selectAbScenarios("phase-1").length).toBe(18);
+		expect(selectAbScenarios("phase-2").length).toBe(110);
+		expect(abEvaluationScenarios.length).toBe(128);
+		const esCount = abEvaluationScenarios.filter(
+			(s) => s.locale === "es",
+		).length;
+		const ptCount = abEvaluationScenarios.filter(
+			(s) => s.locale === "pt",
+		).length;
+		expect(esCount).toBe(64);
+		expect(ptCount).toBe(64);
+		const hitlCount = abEvaluationScenarios.filter(
+			(s) =>
+				s.expectedRoute === "hitl" ||
+				s.expectedTerminalStatus === "pending_approval",
+		).length;
+		expect(hitlCount).toBeGreaterThanOrEqual(16);
 		for (const s of abEvaluationScenarios) {
 			expect(() => evaluationScenarioSchema.parse(s)).not.toThrow();
 		}
-		const locales = new Set(abEvaluationScenarios.map((s) => s.locale));
-		expect(locales.has("es")).toBe(true);
-		expect(locales.has("pt")).toBe(true);
 		expect(abEvaluationScenarios.some((s) => s.polarity === "positive")).toBe(
 			true,
 		);
 		expect(abEvaluationScenarios.some((s) => s.polarity === "negative")).toBe(
 			true,
 		);
-		expect(
-			abEvaluationScenarios.filter((s) => s.locale === "pt").length,
-		).toBeGreaterThanOrEqual(8);
 		for (const s of abEvaluationScenarios) {
 			if (s.polarity === "positive" && s.expectedRoute === "structured_rag") {
 				expect(
@@ -68,14 +76,18 @@ describe("local A/B evaluation", () => {
 		}
 		expect(
 			abEvaluationScenarios.some((s) =>
-				s.researchRef?.includes("adr-0004:adversarial-autoridad"),
+				s.researchRef?.includes("adr-0004:adversarial"),
 			),
 		).toBe(true);
 		expect(
-			abEvaluationScenarios.some((s) => s.prompt.includes("lista en Python")),
+			abEvaluationScenarios.some((s) =>
+				s.prompt.includes("SELECT * FROM customers"),
+			),
 		).toBe(true);
 		expect(
-			abEvaluationScenarios.some((s) => s.prompt.includes("gerente del banco")),
+			abEvaluationScenarios.some((s) =>
+				s.prompt.toLowerCase().includes("gerente"),
+			),
 		).toBe(true);
 	});
 
@@ -180,18 +192,58 @@ describe("local A/B evaluation", () => {
 		const controlled = await new ControlledComparableRunner().run(scenario);
 		expect(baseline.snapshotId).toBe(controlled.snapshotId);
 		expect(baseline.gatesInvoked.controlPlane).toBe(false);
+		expect(baseline.route).toBe("llm");
 		expect(controlled.gatesInvoked.controlPlane).toBe(true);
 		expect(controlled.gatesInvoked.policy).toBe(true);
 		expect(controlled.status).toBe("completed");
 		expect(controlled.queryPlanId).toBe("customer_products");
 	});
 
+	test("injected baseline model receives system prompt and drives tool use", async () => {
+		const scenario = selectAbScenarios("phase-1")[0];
+		expect(scenario).toBeDefined();
+		if (!scenario) throw new Error("missing phase-1 scenario");
+		const seen: string[] = [];
+		const record = await new BaselineComparableRunner({
+			model: {
+				async begin(input) {
+					seen.push(input.system.slice(0, 80));
+					expect(input.system).toContain("banking assistant");
+					expect(input.user).toBe(scenario.prompt);
+					return {
+						kind: "tool_call",
+						call: {
+							name: "retrieve_context",
+							args: {
+								queryId: "customer_products",
+								version: "v1",
+								parameters: {},
+							},
+							callId: "live-1",
+						},
+					};
+				},
+				async continue() {
+					return { kind: "final", text: "Productos sintéticos OK." };
+				},
+			},
+			modelId: "test-live-model",
+		}).run(scenario);
+		expect(seen.length).toBe(1);
+		expect(record.modelVersion).toBe("test-live-model");
+		expect(record.route).toBe("llm");
+		expect(record.retrievalAttemptCount).toBe(1);
+		expect(record.retrievalSuccessCount).toBe(1);
+		expect(record.queryPlanId).toBe("customer_products");
+		expect(record.toolOutcome).toBe("ready");
+	});
+
 	test("deny and guardrail references align toolOutcome for match judging", async () => {
 		const deny = abEvaluationScenarios.find(
-			(s) => s.scenarioId === "adr-policy-deny-transfer",
+			(s) => s.scenarioId === "deny-transfer-es",
 		);
 		const guard = abEvaluationScenarios.find(
-			(s) => s.scenarioId === "adr-guardrail-input-block",
+			(s) => s.scenarioId === "adv-ignore-es",
 		);
 		expect(deny).toBeDefined();
 		expect(guard).toBeDefined();

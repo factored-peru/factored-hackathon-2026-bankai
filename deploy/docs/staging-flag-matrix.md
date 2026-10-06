@@ -80,3 +80,13 @@ Off by default in this matrix.
 
 `AGENTIC_CHAT_ENABLED` forces `DEMO_AUTH_ENABLED=false` plus BigQuery, JEV,
 Vertex, Model Armor. Do not enable in this staging matrix.
+
+## Control plane / HITL (repo ready, staging not cut over)
+
+As of HEAD post PR #13, `CHAT_PIPELINE=control_plane` is implemented in
+`app/backend` (heuristic HITL + safe informational model + casuistics tests).
+Staging remains on `baseline` until the authorized cutover checklist in
+[`../../docs/handoffs/agentic-control-plane-cutover.md`](../../docs/handoffs/agentic-control-plane-cutover.md)
+is satisfied (Model Armor templates, correlator in Secret Manager, plan/apply
+if env changes). Do not flip these flags via ad-hoc `gcloud` env updates that
+bypass Terraform.

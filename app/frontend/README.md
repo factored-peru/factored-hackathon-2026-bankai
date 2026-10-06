@@ -4,6 +4,9 @@ Esta carpeta es propietaria de la experiencia web cliente y backoffice.
 La decisión normativa de stack y entrega vive en
 `../../docs/adr/0021-frontend-app-hosting-delivery.md`.
 
+Handoff de desbloqueo Auth/CORS/smoke (P0-16–20 / P0-22 / P0-38):
+`../../docs/handoffs/frontend-auth-smoke-p0-16-22-38.md`.
+
 - Runtime: Next.js con React y TypeScript.
 - Estilos: Tailwind CSS.
 - Identidad: Firebase Auth; el ID token se entrega al backend en cada llamada

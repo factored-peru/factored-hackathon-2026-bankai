@@ -13,3 +13,7 @@ contenido.
 Los scores son informativos. Una tasa de fallo no bloquea el release P0: sólo
 un fixture inválido o un error técnico lo hace. Convertir umbrales en gates
 requiere una línea base humana y una ADR nueva.
+
+La comparación local baseline vs control plane (`bun run eval:compare`) está
+documentada en [`eval-ab-local.md`](./eval-ab-local.md): corpus 128 es/pt,
+modos `--baseline auto|vertex|synthetic` y corrida de referencia con Vertex.

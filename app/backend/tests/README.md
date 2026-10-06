@@ -35,7 +35,7 @@ Pruebas con `bun test`.
 - `tests/error-codes.test.ts`: valida la taxonomia de errores y el registro de
   codigos.
 - `tests/health.test.ts`: valida health/readiness e integraciones opcionales.
-- `tests/items.test.ts`: valida el caso de uso demo.
+- `tests/conversation-api.test.ts`: valida el contrato demo de sesión/chat.
 - `tests/session.test.ts`: valida sesiones KV, cifrado y handles single-use con
   un double tipado, sin requerir un Valkey local.
 - `tests/session-runtime.test.ts`: valida selección de Valkey e inyección

@@ -14,6 +14,31 @@ import {
 	parsePipelineRunRecord,
 } from "./ab-contracts.js";
 
+/** Allowlisted QueryPlans exposed to the baseline tool in A/B (matches catalog). */
+const AB_BASELINE_QUERY_PLANS = [
+	{
+		queryId: "customer_products",
+		version: "v1",
+		description:
+			"Lists the products (cards and accounts) owned by the customer with their status and balance.",
+	},
+	{
+		queryId: "product_status",
+		version: "v1",
+		description:
+			"Status, balance and limits of one product owned by the customer.",
+	},
+	{
+		queryId: "recent_transactions",
+		version: "v1",
+		description: "Recent transactions for a customer product.",
+	},
+] as const;
+
+const ALLOWED_PLAN_IDS = new Set(
+	AB_BASELINE_QUERY_PLANS.map((plan) => plan.queryId),
+);
+
 function demoSession(actorId: string): SessionContext {
 	return {
 		sessionId: "ab-local-session",
@@ -30,18 +55,56 @@ function demoSession(actorId: string): SessionContext {
 	};
 }
 
-function mapRoute(scenario: EvaluationScenario): PipelineRunRecord["route"] {
-	return scenario.expectedRoute === "deny" || scenario.expectedRoute === "hitl"
-		? scenario.expectedRoute
-		: scenario.expectedRoute;
+/**
+ * Scripted double for unit tests: forces tool use from scenario expectations.
+ * Live Vertex models replace this via `BaselineComparableRunnerOptions.model`.
+ */
+function createScriptedBaselineModel(
+	scenario: EvaluationScenario,
+): BaselineChatModel {
+	return {
+		async begin() {
+			if (
+				scenario.expectedTerminalStatus === "failed" &&
+				scenario.expectedRoute === "ood"
+			) {
+				return { kind: "final", text: "synthetic-ood-baseline" };
+			}
+			if (scenario.expectedRetrieval && scenario.expectedQueryPlanId) {
+				const call: BaselineToolCall = {
+					name: "retrieve_context",
+					args: {
+						queryId: scenario.expectedQueryPlanId,
+						version: "v1",
+						parameters: {},
+					},
+					callId: "ab-baseline-1",
+				};
+				return { kind: "tool_call", call };
+			}
+			return { kind: "final", text: "synthetic-baseline-final" };
+		},
+		async continue() {
+			return { kind: "final", text: "synthetic-baseline-after-tool" };
+		},
+	};
 }
 
+export type BaselineComparableRunnerOptions = Readonly<{
+	/** Live Vertex (or other) model. When omitted, uses a scripted double. */
+	model?: BaselineChatModel;
+	modelId?: string;
+}>;
+
 /**
- * Ungated baseline comparable: doubles only, no control-plane imports.
- * Absence of gates is recorded as a comparative property, not a failure.
+ * Ungated baseline comparable. Defaults to a scripted double for tests; pass a
+ * real `BaselineChatModel` from eval:compare so BASELINE_SYSTEM_PROMPT reaches
+ * the provider. Absence of gates is comparative evidence, not a failure.
  */
 export class BaselineComparableRunner implements ComparablePipelineRunner {
 	readonly pipeline = "baseline" as const;
+
+	constructor(private readonly options: BaselineComparableRunnerOptions = {}) {}
 
 	async run(scenario: EvaluationScenario): Promise<PipelineRunRecord> {
 		const started = performance.now();
@@ -54,19 +117,23 @@ export class BaselineComparableRunner implements ComparablePipelineRunner {
 		let toolOutcome: PipelineRunRecord["toolOutcome"] = "none";
 		let errorCode: string | null = null;
 		let status: PipelineRunRecord["status"] = "completed";
+		const modelId = this.options.modelId ?? "baseline-ab-double";
+		const liveModel = this.options.model !== undefined;
 
 		const tool: BaselineContextTool = {
 			async describe() {
 				return {
 					name: "retrieve_context",
-					description: "synthetic baseline retrieval",
+					description: `Retrieve customer context using exactly one QueryPlan: ${JSON.stringify(AB_BASELINE_QUERY_PLANS)}`,
 					parametersJsonSchema: {
 						type: "object",
+						additionalProperties: false,
+						required: ["queryId", "version", "parameters"],
 						properties: {
 							queryId: { type: "string" },
 							version: { type: "string" },
+							parameters: { type: "object" },
 						},
-						required: ["queryId", "version"],
 					},
 				};
 			},
@@ -76,15 +143,30 @@ export class BaselineComparableRunner implements ComparablePipelineRunner {
 					queryId?: string;
 					version?: string;
 				};
-				const plan =
-					args.queryId ?? scenario.expectedQueryPlanId ?? "unknown_plan";
+				const plan = args.queryId ?? "unknown_plan";
 				queryPlanId = plan;
-				if (!scenario.expectedRetrieval) {
+				const version = args.version ?? "v1";
+				if (!ALLOWED_PLAN_IDS.has(plan)) {
 					toolOutcome = "failed";
 					return {
 						status: "failed",
 						queryId: plan,
-						queryVersion: args.version ?? "v1",
+						queryVersion: version,
+						rows: [],
+						rowCount: 0,
+						bytesProcessed: 0,
+						durationMs: 1,
+						reasonCode: "baseline_query_plan_unknown",
+					} satisfies BaselineToolResult;
+				}
+				// Scripted double: fail retrieval when the scenario does not expect it.
+				// Live LLM: serve allowlisted plans (ungated baseline can still query).
+				if (!liveModel && !scenario.expectedRetrieval) {
+					toolOutcome = "failed";
+					return {
+						status: "failed",
+						queryId: plan,
+						queryVersion: version,
 						rows: [],
 						rowCount: 0,
 						bytesProcessed: 0,
@@ -99,8 +181,8 @@ export class BaselineComparableRunner implements ComparablePipelineRunner {
 				return {
 					status: "ready",
 					queryId: plan,
-					queryVersion: args.version ?? "v1",
-					rows: [{ synthetic_flag: true }],
+					queryVersion: version,
+					rows: [{ synthetic_flag: true, query_id: plan }],
 					rowCount: 1,
 					bytesProcessed: 64,
 					durationMs: 2,
@@ -109,31 +191,15 @@ export class BaselineComparableRunner implements ComparablePipelineRunner {
 			},
 		};
 
+		const inner = this.options.model ?? createScriptedBaselineModel(scenario);
 		const model: BaselineChatModel = {
-			async begin() {
+			async begin(input) {
 				modelCallCount += 1;
-				if (
-					scenario.expectedTerminalStatus === "failed" &&
-					scenario.expectedRoute === "ood"
-				) {
-					return { kind: "final", text: "synthetic-ood-baseline" };
-				}
-				if (scenario.expectedRetrieval && scenario.expectedQueryPlanId) {
-					const call: BaselineToolCall = {
-						name: "retrieve_context",
-						args: {
-							queryId: scenario.expectedQueryPlanId,
-							version: "v1",
-						},
-						callId: "ab-baseline-1",
-					};
-					return { kind: "tool_call", call };
-				}
-				return { kind: "final", text: "synthetic-baseline-final" };
+				return inner.begin(input);
 			},
-			async continue() {
+			async continue(input) {
 				modelCallCount += 1;
-				return { kind: "final", text: "synthetic-baseline-after-tool" };
+				return inner.continue(input);
 			},
 		};
 
@@ -141,7 +207,7 @@ export class BaselineComparableRunner implements ComparablePipelineRunner {
 			model,
 			tool,
 			maxRetrievalAttempts: 2,
-			modelId: "baseline-ab-double",
+			modelId,
 		});
 		const session = demoSession(scenario.actorId);
 		try {
@@ -170,11 +236,12 @@ export class BaselineComparableRunner implements ComparablePipelineRunner {
 			snapshotId: scenario.snapshotId,
 			pipeline: "baseline",
 			status,
-			route: mapRoute(scenario),
+			// Ungated baseline has no control-plane router; trajectory reference is llm.
+			route: "llm",
 			queryPlanId,
-			catalogVersion: scenario.expectedQueryPlanId ? "v1" : null,
+			catalogVersion: queryPlanId !== null ? "v1" : null,
 			policyVersion: null,
-			modelVersion: "baseline-ab-double",
+			modelVersion: modelId,
 			durationMs: Math.max(0, Math.round(performance.now() - started)),
 			modelCallCount,
 			retrievalAttemptCount,

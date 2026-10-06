@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
 import type {
 	BaselineChatModel,
 	BaselineModelTurn,
@@ -186,4 +187,64 @@ export function createVertexBaselineChatProvider(settings: {
 		}),
 		settings.VERTEX_AI_MODEL,
 	);
+}
+
+export type VertexBaselineSettings = Readonly<{
+	VERTEX_AI_ENABLED: boolean;
+	VERTEX_AI_PROJECT_ID: string;
+	VERTEX_AI_LOCATION: string;
+	VERTEX_AI_MODEL: string;
+}>;
+
+const vertexBaselineEnvSchema = z.object({
+	VERTEX_AI_ENABLED: z.union([z.boolean(), z.stringbool()]).default(false),
+	VERTEX_AI_PROJECT_ID: z.string().default(""),
+	VERTEX_AI_LOCATION: z.string().default(""),
+	VERTEX_AI_MODEL: z.string().default(""),
+});
+
+/**
+ * Reads only VERTEX_AI_* from process.env so eval:compare does not require
+ * full runtime validation (KV, Firestore, etc.).
+ */
+export function loadVertexBaselineSettingsFromProcessEnv(
+	source: NodeJS.ProcessEnv = process.env,
+): VertexBaselineSettings {
+	return vertexBaselineEnvSchema.parse({
+		VERTEX_AI_ENABLED: source.VERTEX_AI_ENABLED,
+		VERTEX_AI_PROJECT_ID: source.VERTEX_AI_PROJECT_ID,
+		VERTEX_AI_LOCATION: source.VERTEX_AI_LOCATION,
+		VERTEX_AI_MODEL: source.VERTEX_AI_MODEL,
+	});
+}
+
+export type BaselineModelMode = "auto" | "vertex" | "synthetic";
+
+/**
+ * Resolve a live Vertex baseline model for A/B, or null for the scripted double.
+ */
+export function createBaselineChatModelFromEnv(
+	settings: VertexBaselineSettings,
+	mode: BaselineModelMode = "auto",
+): { model: BaselineChatModel; modelId: string } | null {
+	const wantVertex =
+		mode === "vertex" || (mode === "auto" && settings.VERTEX_AI_ENABLED);
+	if (!wantVertex || mode === "synthetic") return null;
+
+	if (
+		!settings.VERTEX_AI_ENABLED ||
+		settings.VERTEX_AI_PROJECT_ID.length === 0 ||
+		settings.VERTEX_AI_LOCATION.length === 0 ||
+		settings.VERTEX_AI_MODEL.length === 0
+	) {
+		if (mode === "vertex") {
+			throw new Error("vertex_baseline_misconfigured");
+		}
+		return null;
+	}
+
+	return {
+		model: createVertexBaselineChatProvider(settings),
+		modelId: settings.VERTEX_AI_MODEL,
+	};
 }
